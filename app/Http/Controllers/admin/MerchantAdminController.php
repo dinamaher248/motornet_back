@@ -8,6 +8,8 @@ use App\Models\MerchantProduct;
 use App\Models\ServiceCategory;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class MerchantAdminController extends Controller
@@ -104,5 +106,33 @@ class MerchantAdminController extends Controller
         $product->delete();
 
         return back()->with('success', 'تم حذف المنتج');
+    }
+
+    public function destroy(int $id)
+    {
+        $merchant = Merchant::with('products')->findOrFail($id);
+
+        // service_orders تُحذف تلقائيًا مع المتجر (cascade) وفيها العمولات والمستحقات،
+        // لذلك نمنع الحذف لو للمتجر طلبات ونقترح إيقافه بدلًا من ذلك.
+        if ($merchant->orders()->exists()) {
+            return back()->with('error', 'لا يمكن حذف متجر لديه طلبات مسجلة حفاظًا على سجل العمولات. يمكنك إيقافه بدلًا من الحذف.');
+        }
+
+        $images = $merchant->products->pluck('image')->push($merchant->image)->filter()->all();
+
+        DB::transaction(function () use ($merchant) {
+            if (Schema::hasTable('ratings') && Schema::hasColumn('ratings', 'ratee_merchant_id')) {
+                DB::table('ratings')->where('ratee_merchant_id', $merchant->id)->delete();
+            }
+            $merchant->products()->delete();
+            $merchant->delete();
+        });
+
+        // الصور تُحذف بعد نجاح العملية فقط
+        foreach ($images as $path) {
+            Storage::disk('public')->delete($path);
+        }
+
+        return redirect()->route('admin.merchants.index')->with('success', 'تم حذف المتجر');
     }
 }

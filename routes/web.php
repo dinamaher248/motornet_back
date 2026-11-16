@@ -221,6 +221,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->name('merchants.products');
         Route::post('merchants/{id}/products', [\App\Http\Controllers\admin\MerchantAdminController::class, 'storeProduct'])
             ->name('merchants.products.store');
+        Route::delete('merchants/{id}', [\App\Http\Controllers\admin\MerchantAdminController::class, 'destroy'])
+            ->name('merchants.destroy');
         Route::delete('merchants/{merchantId}/products/{productId}', [\App\Http\Controllers\admin\MerchantAdminController::class, 'destroyProduct'])
             ->name('merchants.products.destroy');
 
