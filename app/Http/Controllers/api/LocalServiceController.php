@@ -45,12 +45,19 @@ class LocalServiceController extends Controller
     {
         $category = ServiceCategory::where('slug', $slug)->where('is_active', true)->firstOrFail();
 
-        $lat = $request->query('lat');
-        $lng = $request->query('lng');
+        // Nearest-first (Haversine) works for every hub section
+        // (orders / bookings / services) because they all list merchants by category.
+        // Invalid or missing lat/lng => fall back to the default order (id asc).
+        $lat = $this->validCoordinate($request->query('lat'), 90);
+        $lng = $this->validCoordinate($request->query('lng'), 180);
+        if ($lat === null || $lng === null) {
+            $lat = $lng = null;
+        }
 
         $merchants = Merchant::query()
             ->where('category_id', $category->id)
             ->where('is_active', true)
+            ->orderBy('id')
             ->get()
             ->map(function (Merchant $m) use ($lat, $lng) {
                 $distanceM = $this->distanceMeters($lat, $lng, $m->lat, $m->lng);
@@ -68,7 +75,10 @@ class LocalServiceController extends Controller
                     'payment_methods' => $this->paymentMethods($m),
                 ];
             })
-            ->sortBy('distance_m')
+            ->when($lat !== null, fn ($c) => $c->sortBy(
+                // merchants without coordinates go last instead of first
+                fn (array $row) => $row['distance_m'] ?? PHP_INT_MAX
+            ))
             ->values();
 
         return response()->json([
@@ -659,6 +669,17 @@ class LocalServiceController extends Controller
             'cancelled' => 'ملغي',
             default => $status,
         };
+    }
+
+    private function validCoordinate($value, float $limit): ?float
+    {
+        if ($value === null || $value === '' || !is_numeric($value)) {
+            return null;
+        }
+
+        $value = (float) $value;
+
+        return abs($value) <= $limit ? $value : null;
     }
 
     private function distanceMeters($lat1, $lng1, $lat2, $lng2): ?int
