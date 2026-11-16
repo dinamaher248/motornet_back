@@ -212,7 +212,7 @@ class MerchantOwnerController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()
-            ->map(fn (MerchantProduct $p) => $this->formatProduct($p));
+            ->map(fn (MerchantProduct $p) => $this->formatProduct($p, $this->isBookingsMerchant($merchant)));
 
         return response()->json([
             'status_code' => 200,
@@ -239,7 +239,15 @@ class MerchantOwnerController extends Controller
             ], 422);
         }
 
-        $data = $request->validate([
+        $isBookings = $this->isBookingsMerchant($merchant);
+
+        // الحجوزات (معرض صور المكان): الصورة والعنوان والوصف اختيارية ولا يوجد سعر.
+        $data = $request->validate($isBookings ? [
+            'name' => 'nullable|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'is_active' => 'nullable|boolean',
+            'image' => 'nullable|image|max:4096',
+        ] : [
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:1',
             'description' => 'nullable|string|max:1000',
@@ -247,7 +255,17 @@ class MerchantOwnerController extends Controller
             'image' => 'required|image|max:4096',
         ]);
 
-        $data['image'] = $request->file('image')->store('merchant_products', 'public');
+        if ($isBookings) {
+            // أعمدة name/price غير nullable في الجدول، فنخزن قيماً فارغة بدل تغيير الـ schema.
+            $data['name'] = trim((string) ($data['name'] ?? ''));
+            $data['price'] = 0;
+        }
+
+        if ($request->hasFile('image')) {
+            $data['image'] = $request->file('image')->store('merchant_products', 'public');
+        } else {
+            unset($data['image']);
+        }
         $data['is_active'] = $request->boolean('is_active', true);
         $data['sort_order'] = $merchant->products()->count() + 1;
 
@@ -256,7 +274,7 @@ class MerchantOwnerController extends Controller
         return response()->json([
             'status_code' => 201,
             'message' => 'تم إضافة المنتج',
-            'data' => $this->formatProduct($product),
+            'data' => $this->formatProduct($product, $isBookings),
         ], 201);
     }
 
@@ -265,13 +283,27 @@ class MerchantOwnerController extends Controller
         $merchant = $this->ownedMerchant();
         $product = $merchant->products()->findOrFail($productId);
 
-        $data = $request->validate([
+        $isBookings = $this->isBookingsMerchant($merchant);
+
+        $data = $request->validate($isBookings ? [
+            'name' => 'nullable|string|max:255',
+            'description' => 'nullable|string|max:1000',
+            'is_active' => 'nullable|boolean',
+            'image' => 'nullable|image|max:4096',
+        ] : [
             'name' => 'required|string|max:255',
             'price' => 'required|numeric|min:1',
             'description' => 'nullable|string|max:1000',
             'is_active' => 'nullable|boolean',
             'image' => 'nullable|image|max:4096',
         ]);
+
+        if ($isBookings) {
+            if (array_key_exists('name', $data)) {
+                $data['name'] = trim((string) $data['name']);
+            }
+            unset($data['price']); // لا سعر في معرض الحجوزات
+        }
 
         if ($request->hasFile('image')) {
             if ($product->image) {
@@ -286,7 +318,7 @@ class MerchantOwnerController extends Controller
         return response()->json([
             'status_code' => 200,
             'message' => 'تم تحديث المنتج',
-            'data' => $this->formatProduct($product->fresh()),
+            'data' => $this->formatProduct($product->fresh(), $isBookings),
         ]);
     }
 
@@ -865,17 +897,28 @@ class MerchantOwnerController extends Controller
         return 'orders';
     }
 
-    private function formatProduct(MerchantProduct $product): array
+    private function isBookingsMerchant(Merchant $merchant): bool
     {
-        return [
+        return ($merchant->category?->billingSection() ?? 'orders') === 'bookings';
+    }
+
+    private function formatProduct(MerchantProduct $product, bool $hidePrice = false): array
+    {
+        $out = [
             'id' => $product->id,
-            'name' => $product->name,
+            'name' => $hidePrice && trim((string) $product->name) === '' ? null : $product->name,
             'price' => $product->price,
             'description' => $product->description,
             'image' => $product->image,
             'is_active' => $product->is_active,
             'sort_order' => $product->sort_order,
         ];
+
+        if ($hidePrice) {
+            unset($out['price']);
+        }
+
+        return $out;
     }
 
     private function merchantUser(): User

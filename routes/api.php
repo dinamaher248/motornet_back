@@ -12,6 +12,7 @@ use App\Http\Controllers\api\DriverPanelController;
 use App\Http\Controllers\api\LocalServiceController;
 use App\Http\Controllers\api\MerchantOwnerController;
 use App\Http\Controllers\api\ServicesController;
+use App\Http\Controllers\api\ReservationController;
 use App\Http\Controllers\api\VendorController;
 use App\Http\Controllers\api\TripRequestController;
 use App\Http\Controllers\api\VehicleTypeController;
@@ -171,6 +172,19 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/services/stores', [ServicesController::class, 'stores']);
     Route::get('/services/stores/{id}', [ServicesController::class, 'storeDetail']);
     Route::post('/services/orders/checkout', [ServicesController::class, 'checkout']);
+
+    // الحجوزات: نموذج ديناميكي + عرض السعر (hub_section = bookings)
+    Route::get('/reservations/categories/{id}/fields', [ReservationController::class, 'categoryFields']);
+    Route::post('/reservations/bookings', [ReservationController::class, 'store']);
+    Route::get('/reservations/bookings/mine', [ReservationController::class, 'myBookings']);
+    Route::get('/reservations/bookings/{id}', [ReservationController::class, 'showMine']);
+    Route::post('/reservations/bookings/{id}/accept', [ReservationController::class, 'acceptQuote']);
+    Route::post('/reservations/bookings/{id}/reject', [ReservationController::class, 'rejectQuote']);
+
+    Route::get('/merchant/reservations', [ReservationController::class, 'ownerIndex']);
+    Route::get('/merchant/reservations/{id}', [ReservationController::class, 'ownerShow']);
+    Route::post('/merchant/reservations/{id}/unavailable', [ReservationController::class, 'markUnavailable']);
+    Route::post('/merchant/reservations/{id}/quote', [ReservationController::class, 'sendQuote']);
 
     Route::get('/driver/available-orders', [DriverPanelController::class, 'availableOrders']);
     Route::post('/driver/orders/service_order/{id}/accept-invite', [DriverPanelController::class, 'acceptServiceInvitation']);

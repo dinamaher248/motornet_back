@@ -117,13 +117,24 @@ class LocalServiceController extends Controller
                 'wallet_number' => $merchant->wallet_number,
                 'wallet_owner_display' => MerchantOwnerController::maskWalletOwnerName($merchant->wallet_owner_name),
                 'wallet_type' => $merchant->wallet_type,
-                'products' => $merchant->products->map(fn (MerchantProduct $p) => [
-                    'id' => $p->id,
-                    'name' => $p->name,
-                    'price' => $p->price,
-                    'description' => $p->description,
-                    'image' => $p->image,
-                ])->values(),
+                'hub_section' => $merchant->category?->billingSection() ?? 'orders',
+                'products' => $merchant->products->map(function (MerchantProduct $p) use ($merchant) {
+                    $row = [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'price' => $p->price,
+                        'description' => $p->description,
+                        'image' => $p->image,
+                    ];
+
+                    // الحجوزات: معرض صور بدون أسعار، والعنوان اختياري
+                    if (($merchant->category?->billingSection() ?? 'orders') === 'bookings') {
+                        unset($row['price']);
+                        $row['name'] = trim((string) $p->name) === '' ? null : $p->name;
+                    }
+
+                    return $row;
+                })->values(),
             ],
         ]);
     }

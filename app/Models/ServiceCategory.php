@@ -41,6 +41,13 @@ class ServiceCategory extends Model
         return in_array($section, ['orders', 'bookings', 'services'], true) ? $section : 'orders';
     }
 
+    public function reservationFields(): HasMany
+    {
+        return $this->hasMany(ReservationCategoryField::class, 'category_id')
+            ->orderBy('sort_order')
+            ->orderBy('id');
+    }
+
     public function merchants(): HasMany
     {
         return $this->hasMany(Merchant::class, 'category_id');

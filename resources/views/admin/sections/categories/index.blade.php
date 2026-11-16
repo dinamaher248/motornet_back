@@ -44,6 +44,9 @@
           <td><span class="badge {{ $c->is_active ? 'bg-success' : 'bg-secondary' }}">{{ $c->is_active ? 'مفعّل' : 'معطّل' }}</span></td>
           <td class="d-flex gap-1">
             <a href="{{ route('admin.categories.edit', $c) }}" class="btn btn-sm btn-info">تعديل</a>
+            @if($section === 'bookings')
+              <a href="{{ route('admin.categories.fields.index', $c) }}" class="btn btn-sm btn-primary">حقول الحجز</a>
+            @endif
             <form method="POST" action="{{ route('admin.categories.toggle', $c) }}">@csrf<button class="btn btn-sm btn-warning">تفعيل/تعطيل</button></form>
             <form method="POST" action="{{ route('admin.categories.destroy', $c) }}" onsubmit="return confirm('حذف القسم؟')">@csrf @method('DELETE')<button class="btn btn-sm btn-danger">حذف</button></form>
           </td>

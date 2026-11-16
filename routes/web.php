@@ -129,6 +129,15 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::put('/{category}', [\App\Http\Controllers\admin\ServiceCategoryAdminController::class, 'update'])->name('update');
             Route::delete('/{category}', [\App\Http\Controllers\admin\ServiceCategoryAdminController::class, 'destroy'])->name('destroy');
             Route::post('/{category}/toggle', [\App\Http\Controllers\admin\ServiceCategoryAdminController::class, 'toggle'])->name('toggle');
+
+            // حقول نموذج الحجز الديناميكية (أقسام الحجوزات فقط)
+            $fields = \App\Http\Controllers\admin\ReservationFieldAdminController::class;
+            Route::get('/{category}/fields', [$fields, 'index'])->name('fields.index');
+            Route::post('/{category}/fields', [$fields, 'store'])->name('fields.store');
+            Route::post('/{category}/fields/reorder', [$fields, 'reorder'])->name('fields.reorder');
+            Route::put('/{category}/fields/{field}', [$fields, 'update'])->name('fields.update');
+            Route::delete('/{category}/fields/{field}', [$fields, 'destroy'])->name('fields.destroy');
+            Route::post('/{category}/fields/{field}/move', [$fields, 'move'])->name('fields.move');
         });
 
         Route::prefix('merchant-products')->name('products.')->group(function () {
