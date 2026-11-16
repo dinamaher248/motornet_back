@@ -68,6 +68,9 @@ class LocalServiceController extends Controller
                     'image' => $m->image,
                     'address' => $m->address,
                     'is_open' => $m->is_open,
+                    'category_id' => $m->category_id,
+                    // خدمات الصنايعية والحرفيين: الاتصال المباشر من القائمة
+                    'phone' => $category->billingSection() === 'services' ? $m->phone : null,
                     'avg_rating' => round((float) ($m->avg_rating ?? 0), 1),
                     'ratings_count' => (int) ($m->ratings_count ?? 0),
                     'distance_m' => $distanceM,
@@ -111,6 +114,7 @@ class LocalServiceController extends Controller
                 'avg_rating' => round((float) ($merchant->avg_rating ?? 0), 1),
                 'ratings_count' => (int) ($merchant->ratings_count ?? 0),
                 'category_name' => $merchant->category?->name,
+                'category_id' => $merchant->category_id,
                 'working_hours' => $merchant->working_hours ?? [],
                 'is_open' => $merchant->is_open,
                 'payment_methods' => $this->paymentMethods($merchant),
