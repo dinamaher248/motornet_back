@@ -147,7 +147,7 @@ class DriverPanelController extends Controller
             ];
         }
 
-        if ($vehicle === 'motorcycle') {
+        if (\App\Models\VehicleType::isDeliveryVehicle($driver->vehicle_type)) {
             $serviceOrders = ServiceOrder::with(['merchant', 'user'])
                 ->where('status', 'awaiting_driver')
                 ->orderByDesc('created_at')

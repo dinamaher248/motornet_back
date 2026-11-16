@@ -173,6 +173,9 @@ class VehicleType extends Model
         return self::normalizeKey($raw) ?? $raw;
     }
 
+    
+    public static function sameFamily(?string $a, ?string $b): bool { $ka=array_map("mb_strtolower",self::matchingKeys($a)); $kb=array_map("mb_strtolower",self::matchingKeys($b)); return $ka!==[] && $kb!==[] && array_intersect($ka,$kb)!==[]; }
+    public static function isDeliveryVehicle(?string $raw): bool { return self::sameFamily($raw,"motorcycle") || self::sameFamily($raw,"tricycle"); }
     public function displayName(): string
     {
         if (!empty($this->name_ar)) {

@@ -117,6 +117,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/bidding-trips/{id}', [ApiBiddingController::class, 'show']);
     Route::post('/bidding-offers/{id}/accept', [ApiBiddingController::class, 'acceptOffer']);
 
+    Route::get('/merchant/categories', [MerchantOwnerController::class, 'categories']);
     Route::get('/merchant/profile', [MerchantOwnerController::class, 'profile']);
     Route::post('/merchant/profile', [MerchantOwnerController::class, 'saveProfile']);
     Route::get('/merchant/payment-methods', [MerchantOwnerController::class, 'paymentMethods']);
@@ -126,6 +127,8 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/merchant/products/{productId}', [MerchantOwnerController::class, 'updateProduct']);
     Route::delete('/merchant/products/{productId}', [MerchantOwnerController::class, 'deleteProduct']);
     Route::get('/merchant/orders', [MerchantOwnerController::class, 'orders']);
+    Route::post('/merchant/orders/{orderId}/ready', [MerchantOwnerController::class, 'markReady']);
+    Route::post('/merchant/orders/{orderId}/status', [VendorController::class, 'orderStatus']);
     Route::get('/merchant/orders/{orderId}', [MerchantOwnerController::class, 'showOrder']);
     Route::post('/merchant/orders/{orderId}/accept', [MerchantOwnerController::class, 'acceptOrder']);
     Route::post('/merchant/orders/{orderId}/reject', [MerchantOwnerController::class, 'rejectOrder']);
@@ -137,12 +140,14 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/merchant/dues', [MerchantOwnerController::class, 'duesSummary']);
     Route::post('/merchant/settlement-requests', [MerchantOwnerController::class, 'submitSettlement']);
 
+    Route::get('/vendor/categories', [VendorController::class, 'categories']);
     Route::get('/vendor/store', [VendorController::class, 'store']);
     Route::post('/vendor/store/update', [VendorController::class, 'updateStore']);
     Route::get('/vendor/products', [VendorController::class, 'products']);
     Route::post('/vendor/products', [VendorController::class, 'storeProduct']);
     Route::post('/vendor/products/{id}/toggle', [VendorController::class, 'toggleProduct']);
     Route::get('/vendor/orders', [VendorController::class, 'orders']);
+    Route::post('/vendor/orders/{id}/status', [VendorController::class, 'orderStatus']);
     Route::post('/vendor/orders/{id}/handle', [VendorController::class, 'handleOrder']);
     Route::get('/vendor/wallet', [VendorController::class, 'wallet']);
     Route::post('/vendor/wallet/settle', [VendorController::class, 'settleWallet']);
@@ -156,6 +161,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/local-services/orders/mine', [LocalServiceController::class, 'myOrders']);
     Route::get('/local-services/orders/driver', [LocalServiceController::class, 'driverOrders']);
     Route::get('/local-services/orders/{orderId}', [LocalServiceController::class, 'showOrder']);
+    Route::post('/local-services/orders/{orderId}/fulfillment', [LocalServiceController::class, 'chooseFulfillment']);
+    Route::post('/services/orders/{orderId}/fulfillment', [LocalServiceController::class, 'chooseFulfillment']);
     Route::post('/local-services/orders/{orderId}/accept-offer', [LocalServiceController::class, 'acceptCustomOffer']);
     Route::post('/local-services/orders/{orderId}/reject-offer', [LocalServiceController::class, 'rejectCustomOffer']);
     Route::post('/local-services/orders/{orderId}/delivery-offers', [LocalServiceController::class, 'submitDeliveryOffer']);

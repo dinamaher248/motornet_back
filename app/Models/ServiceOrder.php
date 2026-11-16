@@ -32,6 +32,7 @@ class ServiceOrder extends Model
         'delivery_lat',
         'delivery_lng',
         'fulfillment_type',
+        'ready_at',
         'payment_method',
         'payment_proof',
         'wallet_receipt',

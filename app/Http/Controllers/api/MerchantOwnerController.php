@@ -55,13 +55,14 @@ class MerchantOwnerController extends Controller
                 'merchant' => $merchant ? $this->formatMerchant($merchant) : null,
                 'categories' => $categories,
                 // نرجعه فقط لو المتجر له تصنيف فعلي — عشان ما نمسّحش اختيار صاحب النشاط المحلي
-                'vendor_hub_section' => $merchant?->category
-                    ? $this->resolveVendorHubSection($user, $merchant)
-                    : null,
+                'vendor_hub_section' => $this->storedVendorHubSection($user, $merchant),
             ],
         ]);
     }
 
+    public function categories(Request $request) { $this->merchantUser(); $s=strtolower(trim((string)$request->query("section",""))); $s=in_array($s,["orders","bookings","services","transport"],true)?$s:null; $i=\App\Support\CategoryCatalog::all($s,$s==="transport"); return response()->json(["status_code"=>200,"data"=>$i,"categories"=>$i]); }
+    public function persistUserHubSection($u, $s): void { if(in_array($s,["orders","bookings","services"],true)&&\Illuminate\Support\Facades\Schema::hasColumn("users","vendor_hub_section")){ \App\Models\User::where("id",$u->id)->update(["vendor_hub_section"=>$s]); $u->vendor_hub_section=$s; } }
+    private function storedVendorHubSection($u, $m): ?string { $fc=$m?->category?->billingSection(); if($fc)return $fc; if(\Illuminate\Support\Facades\Schema::hasColumn("users","vendor_hub_section")){ $s=strtolower(trim((string)($u->vendor_hub_section??""))); if(in_array($s,["orders","bookings","services"],true))return $s; } return null; }
     public function saveProfile(Request $request)
     {
         $user = $this->merchantUser();
@@ -504,7 +505,7 @@ class MerchantOwnerController extends Controller
         $drivers = User::query()
             ->where('title', 'driver')
             ->where('is_online', true)
-            ->whereIn('vehicle_type', ['motorcycle', 'موتوسيكل', 'toktok', 'توك توك'])
+            
             ->orderBy('name')
             ->limit(40)
             ->get()
@@ -643,6 +644,9 @@ class MerchantOwnerController extends Controller
         ], 201);
     }
 
+    private function isReady(ServiceOrder $o): bool { return $o->status==="ready" || !empty($o->ready_at); }
+    private function canMarkReady(ServiceOrder $o): bool { return !$this->isReady($o) && in_array($o->status, ["offer_accepted","driver_invited","awaiting_driver","driver_assigned","preparing","accepted"], true); }
+    public function markReady(int $orderId) { $m=$this->ownedMerchant(); $o=$this->findOwnedOrder($m,$orderId); if($this->isReady($o))return response()->json(["status_code"=>200,"message"=>"الطلب جاهز بالفعل","data"=>$this->formatOrder($o->load(["driver","invitedDriver"]))]); if(!$this->canMarkReady($o))return response()->json(["status_code"=>422,"message"=>"لا يمكن تعليم الطلب جاهزاً الآن"],422); $o->update(["ready_at"=>now()]); $o=$o->fresh(["user","merchant","driver","invitedDriver"]); $fcm=app(FcmService::class); foreach(array_filter([$o->user,$o->driver??$o->invitedDriver]) as $t){ try{$fcm->sendToUser($t,"طلبك جاهز","طلبك رقم #".$o->id." جاهز الآن","service_order_ready",(string)$o->id);}catch(\Throwable $e){} } return response()->json(["status_code"=>200,"message"=>"تم تعليم الطلب جاهزاً وإبلاغ العميل","data"=>$this->formatOrder($o)]); }
     private function findOwnedOrder(Merchant $merchant, int $orderId): ServiceOrder
     {
         return ServiceOrder::with(['user', 'merchant'])
@@ -690,7 +694,7 @@ class MerchantOwnerController extends Controller
         $drivers = User::query()
             ->where('title', 'driver')
             ->where('is_online', true)
-            ->whereIn('vehicle_type', ['motorcycle', 'toktok'])
+            
             ->whereNotNull('fcm_token')
             ->where('fcm_token', '!=', '')
             ->limit(40)
@@ -748,7 +752,7 @@ class MerchantOwnerController extends Controller
             'payment_method_label' => $this->paymentLabel($order->payment_method),
             'payment_proof' => $order->payment_proof,
             'status' => $order->status,
-            'status_label' => $this->statusLabel($order->status),
+            'status_label' => $this->statusLabel($order->status), 'fulfillment_type' => $order->fulfillment_type ?: 'pending', 'fulfillment_label' => LocalServiceController::fulfillmentLabel($order->fulfillment_type), 'delivery_type' => $order->fulfillment_type ?: null, 'receiving_method' => $order->fulfillment_type ?: null, 'is_ready' => $this->isReady($order), 'can_mark_ready' => $this->canMarkReady($order),
             'customer' => $showCustomer && $customer ? [
                 'id' => $customer->id,
                 'name' => $customer->name,

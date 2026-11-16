@@ -122,6 +122,7 @@ class LocalServiceController extends Controller
     {
         $user = Auth::guard('api')->user();
 
+        $pm=strtolower(trim((string)$request->input("payment_method"))); if(in_array($pm,["cash","cod","cash_on_delivery","pay_on_delivery"],true))$request->merge(["payment_method"=>"on_delivery"]);
         $data = $request->validate([
             'merchant_id' => 'required|exists:merchants,id',
             'product_id' => 'required|exists:merchant_products,id',
@@ -190,7 +191,7 @@ class LocalServiceController extends Controller
             'payment_proof' => $proofPath,
             'wallet_receipt' => $proofPath,
             'status' => $status === 'awaiting_payment_review' ? 'new' : $status,
-            'commission_amount' => $commission,
+            'commission_amount' => $commission, 'fulfillment_type' => self::normalizeFulfillment($request->input('fulfillment_type', $request->input('delivery_type', $request->input('receiving_method')))) ?? $order->fulfillment_type,
         ]);
 
         $this->notifyMerchantOwner($merchant, $order);
@@ -209,6 +210,7 @@ class LocalServiceController extends Controller
     {
         $user = Auth::guard('api')->user();
 
+        $pm=strtolower(trim((string)$request->input("payment_method"))); if(in_array($pm,["cash","cod","cash_on_delivery","pay_on_delivery"],true))$request->merge(["payment_method"=>"on_delivery"]);
         $data = $request->validate([
             'merchant_id' => 'required|exists:merchants,id',
             'custom_request_text' => 'nullable|string|max:2000',
@@ -285,7 +287,10 @@ class LocalServiceController extends Controller
         ]);
     }
 
-    public function acceptCustomOffer(int $id)
+    public static function normalizeFulfillment($r): ?string { $v=strtolower(trim((string)$r)); return match($v){ "pickup","store_pickup","self_pickup"=>"pickup", "merchant_delivery","delivery","home_delivery","driver_delivery"=>"merchant_delivery", default=>null }; }
+    public static function fulfillmentLabel(?string $t): string { return match($t){ "pickup"=>"استلام من المتجر", "merchant_delivery"=>"توصيل للعنوان", default=>"بانتظار اختيار العميل" }; }
+    public function chooseFulfillment(Request $request, int $id) { $u=Auth::guard("api")->user(); $t=self::normalizeFulfillment($request->input("fulfillment_type",$request->input("delivery_type",$request->input("receiving_method")))); if($t===null)return response()->json(["status_code"=>422,"message"=>"اختر طريقة استلام صحيحة"],422); $o=ServiceOrder::with(["merchant"])->where("user_id",$u->id)->findOrFail($id); $up=["fulfillment_type"=>$t]; if($t==="pickup"&&trim((string)$o->delivery_address)==="")$up["delivery_address"]="استلام من المكان"; $o->update($up); return response()->json(["status_code"=>200,"message"=>"تم حفظ طريقة الاستلام","data"=>$this->formatOrder($o->fresh(["merchant"]))]); }
+    public function acceptCustomOffer(Request $request, int $id)
     {
         $user = Auth::guard('api')->user();
 
@@ -311,12 +316,12 @@ class LocalServiceController extends Controller
         $price = round((float) $order->merchant_offer_price, 2);
         $commission = \App\Support\VendorOrderBilling::dueAmountForMerchant($order->merchant, $price);
 
-        DB::transaction(function () use ($order, $price, $commission) {
+        DB::transaction(function () use ($order, $price, $commission, $request) {
             $order->update([
                 'status' => 'offer_accepted',
                 'total_price' => $price,
                 'product_price' => $price,
-                'commission_amount' => $commission,
+                'commission_amount' => $commission, 'fulfillment_type' => self::normalizeFulfillment($request->input('fulfillment_type', $request->input('delivery_type', $request->input('receiving_method')))) ?? $order->fulfillment_type,
             ]);
             // عمولة التاجر تُحسب فقط عند إكمال التسليم للعميل، مش عند قبول العرض.
         });
@@ -416,6 +421,7 @@ class LocalServiceController extends Controller
             return response()->json(['status_code' => 403, 'message' => 'للسائقين فقط'], 403);
         }
 
+        $pm=strtolower(trim((string)$request->input("payment_method"))); if(in_array($pm,["cash","cod","cash_on_delivery","pay_on_delivery"],true))$request->merge(["payment_method"=>"on_delivery"]);
         $data = $request->validate([
             'amount' => 'required|numeric|min:1',
         ]);
@@ -531,7 +537,7 @@ class LocalServiceController extends Controller
             'wallet' => $merchant->pay_wallet,
             'cash' => $merchant->pay_cash,
             'insta' => $merchant->pay_insta,
-            'on_delivery' => $merchant->pay_on_delivery,
+            'on_delivery' => true,
             default => false,
         };
     }
@@ -580,7 +586,7 @@ class LocalServiceController extends Controller
             'payment_method' => $order->payment_method,
             'payment_method_label' => $this->paymentLabel($order->payment_method),
             'status' => $order->status,
-            'status_label' => $this->statusLabel($order->status),
+            'status_label' => $this->statusLabel($order->status), 'fulfillment_type' => $order->fulfillment_type ?: 'pending', 'fulfillment_label' => self::fulfillmentLabel($order->fulfillment_type), 'delivery_type' => $order->fulfillment_type ?: null, 'receiving_method' => $order->fulfillment_type ?: null,
             'delivery_fee' => $order->delivery_fee,
             'commission_amount' => $order->commission_amount,
             'can_accept_offer' => $isCustom

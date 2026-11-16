@@ -120,7 +120,7 @@ class DriverProximityService
         }
 
         $drivers = $query->get()->filter(function (User $driver) use ($normalized, $pickupLat, $pickupLng, $radiusKm) {
-            if ($this->normalizeVehicleType($driver->vehicle_type) !== $normalized) {
+            if (!VehicleType::sameFamily($driver->vehicle_type, $normalized)) {
                 return false;
             }
 
