@@ -1,0 +1,158 @@
+diff --git a/app/Http/Controllers/admin/MerchantAdminController.php b/app/Http/Controllers/admin/MerchantAdminController.php
+index fd780d8..f5cdba5 100644
+--- a/app/Http/Controllers/admin/MerchantAdminController.php
++++ b/app/Http/Controllers/admin/MerchantAdminController.php
+@@ -8,6 +8,8 @@
+ use App\Models\ServiceCategory;
+ use App\Models\User;
+ use Illuminate\Http\Request;
++use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Schema;
+ use Illuminate\Support\Facades\Storage;
+ 
+ class MerchantAdminController extends Controller
+@@ -105,4 +107,32 @@ public function destroyProduct(int $merchantId, int $productId)
+ 
+         return back()->with('success', 'تم حذف المنتج');
+     }
++
++    public function destroy(int $id)
++    {
++        $merchant = Merchant::with('products')->findOrFail($id);
++
++        // service_orders تُحذف تلقائيًا مع المتجر (cascade) وفيها العمولات والمستحقات،
++        // لذلك نمنع الحذف لو للمتجر طلبات ونقترح إيقافه بدلًا من ذلك.
++        if ($merchant->orders()->exists()) {
++            return back()->with('error', 'لا يمكن حذف متجر لديه طلبات مسجلة حفاظًا على سجل العمولات. يمكنك إيقافه بدلًا من الحذف.');
++        }
++
++        $images = $merchant->products->pluck('image')->push($merchant->image)->filter()->all();
++
++        DB::transaction(function () use ($merchant) {
++            if (Schema::hasTable('ratings') && Schema::hasColumn('ratings', 'ratee_merchant_id')) {
++                DB::table('ratings')->where('ratee_merchant_id', $merchant->id)->delete();
++            }
++            $merchant->products()->delete();
++            $merchant->delete();
++        });
++
++        // الصور تُحذف بعد نجاح العملية فقط
++        foreach ($images as $path) {
++            Storage::disk('public')->delete($path);
++        }
++
++        return redirect()->route('admin.merchants.index')->with('success', 'تم حذف المتجر');
++    }
+ }
+diff --git a/app/Http/Controllers/api/MerchantOwnerController.php b/app/Http/Controllers/api/MerchantOwnerController.php
+index 9ff9403..eaf0bc0 100644
+--- a/app/Http/Controllers/api/MerchantOwnerController.php
++++ b/app/Http/Controllers/api/MerchantOwnerController.php
+@@ -150,9 +150,12 @@ public function savePaymentMethods(Request $request)
+     {
+         $merchant = $this->ownedMerchant();
+ 
++        // طرق الدفع إلزامية لقسم الطلبات فقط؛ الحجوزات وخدمات الصنايعية لا تتطلب دفعًا داخل التطبيق.
++        $requiresPaymentMethod = $this->resolveVendorHubSection($this->merchantUser(), $merchant) === 'orders';
++
+         $data = $request->validate([
+-            'pay_on_delivery' => 'required|boolean',
+-            'pay_wallet' => 'required|boolean',
++            'pay_on_delivery' => ($requiresPaymentMethod ? 'required' : 'nullable') . '|boolean',
++            'pay_wallet' => ($requiresPaymentMethod ? 'required' : 'nullable') . '|boolean',
+             'wallet_number' => 'nullable|string|max:30',
+             'wallet_owner_name' => 'nullable|string|max:255',
+             'wallet_type' => 'nullable|string|max:100',
+@@ -161,7 +164,7 @@ public function savePaymentMethods(Request $request)
+         $payWallet = $request->boolean('pay_wallet');
+         $payOnDelivery = $request->boolean('pay_on_delivery');
+ 
+-        if (!$payOnDelivery && !$payWallet) {
++        if ($requiresPaymentMethod && !$payOnDelivery && !$payWallet) {
+             return response()->json([
+                 'status_code' => 422,
+                 'message' => 'يجب تفعيل طريقة دفع واحدة على الأقل',
+diff --git a/database/migrations/2026_11_16_000001_fix_settings_key_column.php b/database/migrations/2026_11_16_000001_fix_settings_key_column.php
+new file mode 100644
+index 0000000..3d98d74
+--- /dev/null
++++ b/database/migrations/2026_11_16_000001_fix_settings_key_column.php
+@@ -0,0 +1,40 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++/**
++ * The Setting model queries `key`, but the original migration created `key_name`.
++ * Makes the table match the model, safe on any state of the live DB.
++ */
++return new class extends Migration
++{
++    public function up(): void
++    {
++        if (!Schema::hasTable('settings')) {
++            Schema::create('settings', function (Blueprint $table) {
++                $table->id();
++                $table->string('key')->unique();
++                $table->text('value')->nullable();
++                $table->timestamps();
++            });
++            return;
++        }
++
++        if (Schema::hasColumn('settings', 'key_name') && !Schema::hasColumn('settings', 'key')) {
++            Schema::table('settings', function (Blueprint $table) {
++                $table->renameColumn('key_name', 'key');
++            });
++        }
++    }
++
++    public function down(): void
++    {
++        if (Schema::hasColumn('settings', 'key') && !Schema::hasColumn('settings', 'key_name')) {
++            Schema::table('settings', function (Blueprint $table) {
++                $table->renameColumn('key', 'key_name');
++            });
++        }
++    }
++};
+diff --git a/resources/views/admin/sections/merchants/index.blade.php b/resources/views/admin/sections/merchants/index.blade.php
+index 324e478..425814b 100644
+--- a/resources/views/admin/sections/merchants/index.blade.php
++++ b/resources/views/admin/sections/merchants/index.blade.php
+@@ -8,6 +8,7 @@
+   </div>
+ 
+   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
++  @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
+ 
+   <table class="table table-bordered">
+     <thead>
+@@ -28,6 +29,12 @@
+         <td>{{ $merchant->is_open ? 'نعم' : 'لا' }}</td>
+         <td>
+           <a href="{{ route('admin.products.index', ['merchant_id' => $merchant->id]) }}" class="btn btn-sm btn-info">عرض منتجاتهم</a>
++          <form action="{{ route('admin.merchants.destroy', $merchant->id) }}" method="POST" class="d-inline"
++                onsubmit="return confirm('هل أنت متأكد من حذف «{{ $merchant->name }}»؟ سيتم حذف منتجاته وصوره نهائيًا ولا يمكن التراجع.');">
++            @csrf
++            @method('DELETE')
++            <button type="submit" class="btn btn-sm btn-danger">حذف</button>
++          </form>
+         </td>
+       </tr>
+       @endforeach
+diff --git a/routes/web.php b/routes/web.php
+index d1df546..2fdb5a8 100644
+--- a/routes/web.php
++++ b/routes/web.php
+@@ -221,6 +221,8 @@
+             ->name('merchants.products');
+         Route::post('merchants/{id}/products', [\App\Http\Controllers\admin\MerchantAdminController::class, 'storeProduct'])
+             ->name('merchants.products.store');
++        Route::delete('merchants/{id}', [\App\Http\Controllers\admin\MerchantAdminController::class, 'destroy'])
++            ->name('merchants.destroy');
+         Route::delete('merchants/{merchantId}/products/{productId}', [\App\Http\Controllers\admin\MerchantAdminController::class, 'destroyProduct'])
+             ->name('merchants.products.destroy');
+ 

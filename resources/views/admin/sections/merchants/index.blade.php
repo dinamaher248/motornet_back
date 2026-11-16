@@ -8,6 +8,7 @@
   </div>
 
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
+  @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
 
   <table class="table table-bordered">
     <thead>
@@ -28,6 +29,12 @@
         <td>{{ $merchant->is_open ? 'نعم' : 'لا' }}</td>
         <td>
           <a href="{{ route('admin.products.index', ['merchant_id' => $merchant->id]) }}" class="btn btn-sm btn-info">عرض منتجاتهم</a>
+          <form action="{{ route('admin.merchants.destroy', $merchant->id) }}" method="POST" class="d-inline"
+                onsubmit="return confirm('هل أنت متأكد من حذف «{{ $merchant->name }}»؟ سيتم حذف منتجاته وصوره نهائيًا ولا يمكن التراجع.');">
+            @csrf
+            @method('DELETE')
+            <button type="submit" class="btn btn-sm btn-danger">حذف</button>
+          </form>
         </td>
       </tr>
       @endforeach

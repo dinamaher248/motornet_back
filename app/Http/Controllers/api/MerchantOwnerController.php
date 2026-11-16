@@ -151,9 +151,12 @@ class MerchantOwnerController extends Controller
     {
         $merchant = $this->ownedMerchant();
 
+        // طرق الدفع إلزامية لقسم الطلبات فقط؛ الحجوزات وخدمات الصنايعية لا تتطلب دفعًا داخل التطبيق.
+        $requiresPaymentMethod = $this->resolveVendorHubSection($this->merchantUser(), $merchant) === 'orders';
+
         $data = $request->validate([
-            'pay_on_delivery' => 'required|boolean',
-            'pay_wallet' => 'required|boolean',
+            'pay_on_delivery' => ($requiresPaymentMethod ? 'required' : 'nullable') . '|boolean',
+            'pay_wallet' => ($requiresPaymentMethod ? 'required' : 'nullable') . '|boolean',
             'wallet_number' => 'nullable|string|max:30',
             'wallet_owner_name' => 'nullable|string|max:255',
             'wallet_type' => 'nullable|string|max:100',
@@ -162,7 +165,7 @@ class MerchantOwnerController extends Controller
         $payWallet = $request->boolean('pay_wallet');
         $payOnDelivery = $request->boolean('pay_on_delivery');
 
-        if (!$payOnDelivery && !$payWallet) {
+        if ($requiresPaymentMethod && !$payOnDelivery && !$payWallet) {
             return response()->json([
                 'status_code' => 422,
                 'message' => 'يجب تفعيل طريقة دفع واحدة على الأقل',
