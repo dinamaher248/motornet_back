@@ -386,6 +386,59 @@ class DriverPanelController extends Controller
             ?: $request->query('action', '')
         )));
 
+        // التطبيق قد يرسل bidding_trip لرقم يخص رحلة سريعة (trip_request): نصحح النوع بدل الفشل.
+        if ($type === 'bidding_trip') {
+            $q = BiddingTrip::query();
+            $col = BiddingTrip::assignedDriverColumn();
+            $col ? $q->where($col, $driver->id) : $q->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id));
+            if (!$q->whereKey($id)->exists()
+                && TripRequest::whereKey($id)->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id))->exists()) {
+                $type = 'trip_request';
+            }
+        }
+
+        if ($type === 'trip_request') {
+            $trip = TripRequest::with('user')
+                ->whereHas('acceptedOffer', fn ($q) => $q->where('driver_id', $driver->id))
+                ->find($id);
+            if (!$trip) {
+                return response()->json(['status' => false, 'message' => 'الطلب غير موجود'], 404);
+            }
+            if ($action === '' && $request->isMethod('get')) {
+                $action = (string) $trip->status === 'going_to_pickup' ? 'picked_up' : 'going_to_pickup';
+            }
+            if ($action === 'going_to_pickup' || $action === 'picked_up') {
+                $allowed = $action === 'going_to_pickup'
+                    ? ['in_progress', 'accepted', 'driver_assigned']
+                    : ['in_progress', 'accepted', 'going_to_pickup', 'driver_assigned'];
+                if (!in_array((string) $trip->status, $allowed, true)) {
+                    return response()->json(['status' => false, 'message' => 'لا يمكن تنفيذ الإجراء في الحالة الحالية'], 400);
+                }
+                try {
+                    $trip->update(['status' => $action]);
+                    $trip->refresh();
+                    if ($action === 'picked_up' && (string) $trip->status !== 'picked_up') {
+                        $trip->update(['status' => 'in_progress']);
+                    }
+                } catch (\Throwable $e) {
+                    // ENUM قديم: نترك الحالة كما هي
+                }
+                if ($trip->user) {
+                    app(FcmService::class)->sendToUser(
+                        $trip->user,
+                        $action === 'picked_up' ? 'تم استلام الطلب' : 'السائق في الطريق',
+                        $action === 'picked_up' ? 'تم استلام الطلب وجارٍ التوصيل.' : 'السائق في الطريق إلى موقع الاستلام.',
+                        'trip_status',
+                        (string) $trip->id,
+                    );
+                }
+
+                return app(OrderTrackingController::class)->show('trip_request', $id);
+            }
+
+            return response()->json(['status' => false, 'message' => 'إجراء غير معروف'], 422);
+        }
+
         if ($type === 'bidding_trip') {
             $query = BiddingTrip::with('user');
             $driverCol = BiddingTrip::assignedDriverColumn();
@@ -394,7 +447,10 @@ class DriverPanelController extends Controller
             } else {
                 $query->whereHas('acceptedOffer', fn ($q) => $q->where('driver_id', $driver->id));
             }
-            $trip = $query->findOrFail($id);
+            $trip = $query->find($id);
+            if (!$trip) {
+                return response()->json(['status' => false, 'message' => 'الطلب غير موجود'], 404);
+            }
 
             if ($action === '' && $request->isMethod('get')) {
                 $action = in_array((string) $trip->status, ['going_to_pickup'], true)

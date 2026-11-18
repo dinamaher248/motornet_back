@@ -123,7 +123,31 @@ class OrderTrackingController extends Controller
     /**
      * @return array|\Illuminate\Http\JsonResponse
      */
+    /** يجرّب النوع المطلوب ثم الأنواع البديلة (التطبيق قد يرسل نوعاً غير مطابق للرقم). */
     private function resolve(string $type, int $id, User $user)
+    {
+        $first = $this->resolveExact($type, $id, $user);
+        if (!($first instanceof \Illuminate\Http\JsonResponse)) {
+            return $first;
+        }
+        // نجرّب البدائل فقط لو الرقم غير موجود لهذا النوع (404) وليس لو ممنوع (403).
+        if ($first->getStatusCode() !== 404) {
+            return $first;
+        }
+        foreach (['trip_request', 'bidding_trip', 'service_order'] as $alt) {
+            if ($alt === $type) {
+                continue;
+            }
+            $ctx = $this->resolveExact($alt, $id, $user);
+            if (!($ctx instanceof \Illuminate\Http\JsonResponse)) {
+                return $ctx;
+            }
+        }
+
+        return $first;
+    }
+
+    private function resolveExact(string $type, int $id, User $user)
     {
         if ($type === 'trip_request') {
             $trip = TripRequest::with(['user', 'acceptedOffer.driver'])->find($id);
@@ -177,7 +201,7 @@ class OrderTrackingController extends Controller
                 'is_driver' => $isDriver,
                 'driver' => $driver,
                 'customer' => $trip->user,
-                'price' => (float) ($trip->final_price ?? optional($trip->acceptedOffer)->amount()),
+                'price' => (float) ($trip->final_price ?? optional($trip->acceptedOffer)->amount),
                 'pickup' => $trip->pickup_address,
                 'dropoff' => $trip->dropoff_address,
                 'pickup_lat' => $trip->pickup_lat,
