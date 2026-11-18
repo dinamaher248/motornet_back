@@ -460,14 +460,7 @@ class DriverPanelController extends Controller
         }
 
         if ($type === 'bidding_trip') {
-            $query = BiddingTrip::with('user');
-            $driverCol = BiddingTrip::assignedDriverColumn();
-            if ($driverCol) {
-                $query->where($driverCol, $driver->id);
-            } else {
-                $query->whereHas('acceptedOffer', fn ($q) => $q->where('driver_id', $driver->id));
-            }
-            $trip = $query->find($id);
+            $trip = BiddingTrip::with('user')->assignedTo($driver->id)->find($id);
             if (!$trip) {
                 return response()->json(['status' => false, 'message' => 'الطلب غير موجود'], 404);
             }
@@ -609,10 +602,7 @@ class DriverPanelController extends Controller
     {
         $mine = fn ($q) => $q->where('driver_id', $driver->id);
         $inBidding = function () use ($id, $driver) {
-            $q = BiddingTrip::query();
-            $col = BiddingTrip::assignedDriverColumn();
-            $col ? $q->where($col, $driver->id) : $q->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id));
-            return $q->whereKey($id)->exists();
+            return BiddingTrip::query()->assignedTo($driver->id)->whereKey($id)->exists();
         };
         $inTrip = fn () => TripRequest::whereKey($id)->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id))->exists();
         $inRide = fn () => RideBook::whereKey($id)->where('driver_id', $driver->id)->exists();
@@ -663,14 +653,12 @@ class DriverPanelController extends Controller
             }
         } elseif ($type === 'bidding_trip') {
             $trip = BiddingTrip::with('user')
-                ->whereIn('status', ['handed_to_driver', 'in_progress', 'accepted', 'going_to_pickup', 'picked_up', 'driver_assigned']);
-            $driverCol = BiddingTrip::assignedDriverColumn();
-            if ($driverCol) {
-                $trip->where($driverCol, $driver->id);
-            } else {
-                $trip->whereHas('acceptedOffer', fn ($q) => $q->where('driver_id', $driver->id));
+                ->assignedTo($driver->id)
+                ->whereIn('status', ['handed_to_driver', 'in_progress', 'accepted', 'going_to_pickup', 'picked_up', 'driver_assigned'])
+                ->find($id);
+            if (!$trip) {
+                return response()->json(['status_code' => 404, 'message' => 'الطلب غير موجود أو تم إنهاؤه'], 404);
             }
-            $trip = $trip->findOrFail($id);
             $trip->update(['status' => 'completed']);
             if (!empty($trip->ride_book_id)) {
                 RideBook::where('id', $trip->ride_book_id)->update(['status' => 'completed']);

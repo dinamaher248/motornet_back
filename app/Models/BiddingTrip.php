@@ -104,4 +104,19 @@ class BiddingTrip extends Model
     {
         return $this->belongsTo(User::class, self::assignedDriverColumn() ?: 'accepted_driver_id');
     }
+
+    /** رحلات مُسندة لهذا السائق بأي وسيلة: عمود السائق المقبول، عمود driver_id، أو العرض المقبول. */
+    public function scopeAssignedTo($query, int $driverId)
+    {
+        $table = $this->getTable();
+
+        return $query->where(function ($q) use ($driverId, $table) {
+            foreach (['accepted_driver_id', 'driver_id'] as $col) {
+                if (Schema::hasColumn($table, $col)) {
+                    $q->orWhere($col, $driverId);
+                }
+            }
+            $q->orWhereHas('acceptedOffer', fn ($oq) => $oq->where('driver_id', $driverId));
+        });
+    }
 }
