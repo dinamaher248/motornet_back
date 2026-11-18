@@ -15,6 +15,23 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+// احتياطي لعرض الصور المرفوعة لو رابط public/storage غير موجود على السيرفر
+// (لو الرابط موجود يخدمه الويب سيرفر مباشرة ولا يصل الطلب هنا).
+Route::get('/storage/{path}', function (string $path) {
+    $path = ltrim(str_replace('\\', '/', $path), '/');
+    if ($path === '' || str_contains($path, '..')) {
+        abort(404);
+    }
+    $disk = \Illuminate\Support\Facades\Storage::disk('public');
+    if (!$disk->exists($path)) {
+        abort(404);
+    }
+
+    return response()->file($disk->path($path), [
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->where('path', '.*');
+
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');

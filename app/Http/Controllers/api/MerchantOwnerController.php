@@ -530,10 +530,10 @@ class MerchantOwnerController extends Controller
         $merchant = $this->ownedMerchant();
         $order = $this->findOwnedOrder($merchant, $orderId);
 
-        if ($order->status !== 'offer_accepted') {
+        if (!$this->canAssignNow($order)) {
             return response()->json([
                 'status_code' => 422,
-                'message' => 'يجب قبول العميل للعرض أولاً',
+                'message' => 'جهّز الطلب أولاً (تم التجهيز) ثم اختر وسيلة التوصيل',
             ], 422);
         }
 
@@ -549,6 +549,7 @@ class MerchantOwnerController extends Controller
                 'name' => $d->name,
                 'phone' => $d->phone,
                 'vehicle_type' => $d->vehicle_type,
+                'vehicle_type_label' => \App\Models\VehicleType::query()->where('key', \App\Models\VehicleType::normalizeKey($d->vehicle_type) ?? $d->vehicle_type)->value('name_ar') ?? $d->vehicle_type,
             ]);
 
         return response()->json(['status_code' => 200, 'data' => $drivers]);
@@ -559,7 +560,7 @@ class MerchantOwnerController extends Controller
         $merchant = $this->ownedMerchant();
         $order = $this->findOwnedOrder($merchant, $orderId);
 
-        if ($order->status !== 'offer_accepted') {
+        if (!$this->canAssignNow($order)) {
             return response()->json([
                 'status_code' => 422,
                 'message' => 'لا يمكن تعيين سائق لهذا الطلب',
@@ -679,9 +680,22 @@ class MerchantOwnerController extends Controller
         ], 201);
     }
 
+    private function canAssignNow(ServiceOrder $o): bool
+    {
+        if ($o->status === 'offer_accepted') {
+            return true;
+        }
+
+        // توصيل بواسطة المكان: بعد "تم التجهيز" يختار التاجر وسيلة التوصيل.
+        return $o->fulfillment_type === 'merchant_delivery'
+            && $this->isReady($o)
+            && empty($o->driver_id)
+            && empty($o->invited_driver_id)
+            && in_array($o->status, ['preparing', 'accepted', 'awaiting_driver'], true);
+    }
     private function isReady(ServiceOrder $o): bool { return $o->status==="ready" || !empty($o->ready_at); }
     private function canMarkReady(ServiceOrder $o): bool { return !$this->isReady($o) && in_array($o->status, ["offer_accepted","driver_invited","awaiting_driver","driver_assigned","preparing","accepted"], true); }
-    public function markReady(int $orderId) { $m=$this->ownedMerchant(); $o=$this->findOwnedOrder($m,$orderId); if($this->isReady($o))return response()->json(["status_code"=>200,"message"=>"الطلب جاهز بالفعل","data"=>$this->formatOrder($o->load(["driver","invitedDriver"]))]); if(!$this->canMarkReady($o))return response()->json(["status_code"=>422,"message"=>"لا يمكن تعليم الطلب جاهزاً الآن"],422); $o->update(["ready_at"=>now()]); $o=$o->fresh(["user","merchant","driver","invitedDriver"]); $fcm=app(FcmService::class); foreach(array_filter([$o->user,$o->driver??$o->invitedDriver]) as $t){ try{$fcm->sendToUser($t,"طلبك جاهز","طلبك رقم #".$o->id." جاهز الآن","service_order_ready",(string)$o->id);}catch(\Throwable $e){} } return response()->json(["status_code"=>200,"message"=>"تم تعليم الطلب جاهزاً وإبلاغ العميل","data"=>$this->formatOrder($o)]); }
+    public function markReady(int $orderId) { $m=$this->ownedMerchant(); $o=$this->findOwnedOrder($m,$orderId); if($this->isReady($o))return response()->json(["status_code"=>200,"message"=>"الطلب جاهز بالفعل","data"=>$this->formatOrder($o->load(["driver","invitedDriver"]))]); if(!$this->canMarkReady($o))return response()->json(["status_code"=>422,"message"=>"لا يمكن تعليم الطلب جاهزاً الآن"],422); $o->update(["ready_at"=>now()]); $o=$o->fresh(["user","merchant","driver","invitedDriver"]); $fcm=app(FcmService::class); $pickup=$o->fulfillment_type==="pickup"; foreach(array_filter([$o->user,$o->driver??$o->invitedDriver]) as $t){ try{$fcm->sendToUser($t,$pickup&&$t->id===$o->user_id?"طلبك جاهز للاستلام":"طلبك جاهز",$pickup&&$t->id===$o->user_id?"تم تجهيز طلبك رقم #".$o->id." — يمكنك استلامه من ".($o->merchant?->name??"المكان")." أو الاتصال بهم":"طلبك رقم #".$o->id." جاهز الآن","service_order_ready",(string)$o->id);}catch(\Throwable $e){} } return response()->json(["status_code"=>200,"message"=>"تم تعليم الطلب جاهزاً وإبلاغ العميل","data"=>$this->formatOrder($o)]); }
     private function findOwnedOrder(Merchant $merchant, int $orderId): ServiceOrder
     {
         return ServiceOrder::with(['user', 'merchant'])
@@ -693,7 +707,8 @@ class MerchantOwnerController extends Controller
     {
         DB::transaction(function () use ($order) {
             // لا يكتمل ولا تُحسب عمولة التاجر إلا بعد تسليم السائق للعميل.
-            $order->update(['status' => 'awaiting_driver']);
+            $handledByPlace = in_array($order->fulfillment_type, ['pickup', 'merchant_delivery'], true);
+            $order->update(['status' => $handledByPlace ? 'preparing' : 'awaiting_driver']);
         });
 
         if ($order->user) {
@@ -706,7 +721,9 @@ class MerchantOwnerController extends Controller
             );
         }
 
-        $this->notifyDrivers($order->fresh(['merchant']));
+        if (!in_array($order->fulfillment_type, ['pickup', 'merchant_delivery'], true)) {
+            $this->notifyDrivers($order->fresh(['merchant']));
+        }
     }
 
     private function processOrderRejection(ServiceOrder $order): void
@@ -808,7 +825,9 @@ class MerchantOwnerController extends Controller
             'can_confirm_payment' => !$isCustom && $isCatalogPending && $isWallet && $order->status === 'awaiting_payment_review',
             'can_reject_payment' => !$isCustom && $isCatalogPending && $isWallet && $order->status === 'awaiting_payment_review',
             'can_send_offer' => $isCustom && $order->status === 'awaiting_merchant_offer',
-            'can_assign_driver' => $isCustom && $order->status === 'offer_accepted',
+            'can_assign_driver' => $this->canAssignNow($order),
+            'is_ready' => $this->isReady($order),
+            'can_mark_ready' => $this->canMarkReady($order),
             'invited_driver' => $order->invitedDriver ? [
                 'id' => $order->invitedDriver->id,
                 'name' => $order->invitedDriver->name,

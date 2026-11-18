@@ -92,10 +92,10 @@ class TripRequestController extends Controller
 
         $requests = TripRequest::query()
             ->where('status', 'awaiting_offers')
-            ->where('vehicle_type', $driverVehicle)
             ->orderByDesc('created_at')
-            ->limit(80)
+            ->limit(200)
             ->get()
+            ->filter(fn (TripRequest $trip) => \App\Models\VehicleType::sameFamily($driver->vehicle_type, $trip->vehicle_type))
             ->filter(function (TripRequest $trip) use ($driver, $proximity) {
                 return $proximity->driverSeesPickup(
                     $driver,
@@ -204,7 +204,7 @@ class TripRequestController extends Controller
             return response()->json(['status_code' => 422, 'message' => 'الطلب لم يعد متاحًا'], 422);
         }
 
-        if ($this->normalizeVehicleType($driver->vehicle_type) !== $trip->vehicle_type) {
+        if (!\App\Models\VehicleType::sameFamily($driver->vehicle_type, $trip->vehicle_type)) {
             return response()->json(['status_code' => 422, 'message' => 'نوع مركبتك لا يطابق الطلب'], 422);
         }
 
@@ -539,7 +539,7 @@ class TripRequestController extends Controller
             $trip->pick_lat !== null ? (float) $trip->pick_lat : null,
             $trip->pick_lng !== null ? (float) $trip->pick_lng : null,
             80,
-            true
+            false
         );
 
         $fcm = app(FcmService::class);

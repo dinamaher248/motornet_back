@@ -44,10 +44,11 @@ class DriverPanelController extends Controller
             : TripRequest::query()
                 ->with('user')
                 ->where('status', 'awaiting_offers')
-                ->whereIn('vehicle_type', $matchKeys)
                 ->orderByDesc('created_at')
-                ->limit(80)
+                ->limit(200)
                 ->get()
+                // مطابقة عائلة المركبة في PHP (الأسماء العربية/الإنجليزية/المرادفات) بدل مطابقة نصية حرفية.
+                ->filter(fn (TripRequest $trip) => \App\Models\VehicleType::sameFamily($driver->vehicle_type, $trip->vehicle_type))
                 ->filter(function (TripRequest $trip) use ($driver, $proximity) {
                     return $proximity->driverSeesPickup(
                         $driver,
@@ -733,11 +734,11 @@ class DriverPanelController extends Controller
                 : \App\Models\BiddingTrip::query()
                     ->with('user')
                     ->where('status', 'pending')
-                    ->whereIn('vehicle_type', $matchKeys)
                     ->where('user_id', '!=', $driver->id)
                     ->orderByDesc('created_at')
-                    ->limit(80)
+                    ->limit(200)
                     ->get()
+                    ->filter(fn ($trip) => \App\Models\VehicleType::sameFamily($driver->vehicle_type, $trip->vehicle_type))
                     ->filter(function ($trip) use ($driver, $proximity) {
                         return $proximity->driverSeesPickup(
                             $driver,

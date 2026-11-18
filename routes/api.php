@@ -13,6 +13,7 @@ use App\Http\Controllers\api\LocalServiceController;
 use App\Http\Controllers\api\MerchantOwnerController;
 use App\Http\Controllers\api\ServicesController;
 use App\Http\Controllers\api\ReservationController;
+use App\Http\Controllers\api\NotificationController;
 use App\Http\Controllers\api\VendorController;
 use App\Http\Controllers\api\TripRequestController;
 use App\Http\Controllers\api\VehicleTypeController;
@@ -159,6 +160,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/local-services/merchants/{id}', [LocalServiceController::class, 'merchantDetail']);
     Route::post('/local-services/orders', [LocalServiceController::class, 'storeOrder']);
     Route::post('/local-services/custom-orders', [LocalServiceController::class, 'storeCustomOrder']);
+    Route::post('/services/custom-orders/submit', [LocalServiceController::class, 'storeCustomOrder']);
     Route::get('/local-services/orders/mine', [LocalServiceController::class, 'myOrders']);
     Route::get('/local-services/orders/driver', [LocalServiceController::class, 'driverOrders']);
     Route::get('/local-services/orders/{orderId}', [LocalServiceController::class, 'showOrder']);
@@ -185,6 +187,11 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/merchant/reservations/{id}', [ReservationController::class, 'ownerShow']);
     Route::post('/merchant/reservations/{id}/unavailable', [ReservationController::class, 'markUnavailable']);
     Route::post('/merchant/reservations/{id}/quote', [ReservationController::class, 'sendQuote']);
+
+    // صندوق الإشعارات (للمستخدم الحالي فقط)
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+    Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markRead']);
 
     Route::get('/driver/available-orders', [DriverPanelController::class, 'availableOrders']);
     Route::post('/driver/orders/service_order/{id}/accept-invite', [DriverPanelController::class, 'acceptServiceInvitation']);

@@ -493,7 +493,7 @@ class ApiBiddingController extends Controller
                 $trip->pickup_lat !== null ? (float) $trip->pickup_lat : null,
                 $trip->pickup_lng !== null ? (float) $trip->pickup_lng : null,
                 80,
-                true
+                false
             );
 
             $price = (float) ($trip->customer_price ?? 0);

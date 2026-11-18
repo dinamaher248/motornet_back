@@ -987,6 +987,13 @@ public function login(Request $request)
 
     public function logout()
     {
+        // عند الخروج نفصل الجهاز عن الحساب حتى لا تصله إشعاراته.
+        $current = Auth::guard('api')->user();
+        if ($current && Schema::hasColumn('users', 'fcm_token')) {
+            $current->fcm_token = null;
+            $current->save();
+        }
+
         Auth::guard('api')->logout();
         return response()->json([
             'status' => 'success',
@@ -1181,6 +1188,12 @@ public function login(Request $request)
                 'message' => 'FCM token received',
             ]);
         }
+
+        // الـ token خاص بالجهاز: لو سجّل حساب آخر على نفس الجهاز نسحبه من الحسابات
+        // القديمة كي لا تصل إشعارات حساب لشخص آخر.
+        User::where('fcm_token', $request->token)
+            ->where('id', '!=', $user->id)
+            ->update(['fcm_token' => null]);
 
         $user->fcm_token = $request->token;
         $user->save();

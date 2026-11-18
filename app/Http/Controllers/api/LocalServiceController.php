@@ -216,7 +216,7 @@ class LocalServiceController extends Controller
             'payment_proof' => $proofPath,
             'wallet_receipt' => $proofPath,
             'status' => $status === 'awaiting_payment_review' ? 'new' : $status,
-            'commission_amount' => $commission, 'fulfillment_type' => self::normalizeFulfillment($request->input('fulfillment_type', $request->input('delivery_type', $request->input('receiving_method')))) ?? $order->fulfillment_type,
+            'commission_amount' => $commission, 'fulfillment_type' => self::normalizeFulfillment($request->input('fulfillment_type', $request->input('delivery_type', $request->input('receiving_method')))) ?? null,
         ]);
 
         $this->notifyMerchantOwner($merchant, $order);
@@ -246,7 +246,11 @@ class LocalServiceController extends Controller
             'delivery_lat' => 'nullable|numeric',
             'delivery_lng' => 'nullable|numeric',
             'notes' => 'nullable|string|max:1000',
+            'payment_method' => 'nullable|in:wallet,cash,insta,on_delivery',
+            'fulfillment_type' => 'nullable|string|max:40',
         ]);
+        $customPayment = $data['payment_method'] ?? 'on_delivery';
+        $customFulfillment = self::normalizeFulfillment($request->input('fulfillment_type', $request->input('delivery_type', $request->input('receiving_method'))));
 
         $text = trim($data['custom_request_text'] ?? '');
         if ($text === '' && !$request->hasFile('custom_request_image')) {
@@ -283,13 +287,18 @@ class LocalServiceController extends Controller
             'delivery_details' => $data['delivery_details'] ?? null,
             'delivery_lat' => $data['delivery_lat'] ?? null,
             'delivery_lng' => $data['delivery_lng'] ?? null,
-            'payment_method' => 'on_delivery',
+            'payment_method' => $customPayment,
+            'fulfillment_type' => $customFulfillment,
             'status' => 'awaiting_merchant_offer',
             'commission_amount' => 0,
         ]);
 
-        $this->notifyMerchantOwner($merchant, $order);
-        app(MerchantOrderNotificationService::class)->notifyCustomerOrderSent($user, $order);
+        try {
+            $this->notifyMerchantOwner($merchant, $order);
+            app(MerchantOrderNotificationService::class)->notifyCustomerOrderSent($user, $order);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json([
             'status_code' => 201,

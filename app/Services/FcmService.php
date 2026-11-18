@@ -224,6 +224,9 @@ class FcmService
 
     ): array {
 
+        // الصندوق أولاً: الإشعار يظهر للمستخدم حتى لو فشل الـ push أو لا يوجد FCM token.
+        \App\Models\AppNotification::record($user, $title, $body, $action, $refId);
+
         $token = trim((string) $user->fcm_token);
 
         if ($token === '') {

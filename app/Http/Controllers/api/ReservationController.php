@@ -32,13 +32,7 @@ class ReservationController extends Controller
     {
         $category = ServiceCategory::where('is_active', true)->findOrFail($id);
 
-        if ($category->billingSection() !== 'bookings') {
-            return response()->json([
-                'status_code' => 404,
-                'message' => 'هذا القسم ليس من أقسام الحجوزات',
-            ], 404);
-        }
-
+        // نرجع الحقول المعرّفة لهذا التصنيف أياً كان قسمه؛ التحقق من قسم الحجوزات يتم عند الإرسال فقط.
         return response()->json([
             'status_code' => 200,
             'data' => [
