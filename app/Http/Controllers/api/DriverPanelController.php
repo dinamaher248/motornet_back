@@ -386,15 +386,35 @@ class DriverPanelController extends Controller
             ?: $request->query('action', '')
         )));
 
-        // التطبيق قد يرسل bidding_trip لرقم يخص رحلة سريعة (trip_request): نصحح النوع بدل الفشل.
-        if ($type === 'bidding_trip') {
-            $q = BiddingTrip::query();
-            $col = BiddingTrip::assignedDriverColumn();
-            $col ? $q->where($col, $driver->id) : $q->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id));
-            if (!$q->whereKey($id)->exists()
-                && TripRequest::whereKey($id)->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id))->exists()) {
-                $type = 'trip_request';
+        $type = $this->correctDriverType($type, $id, $driver);
+
+        if ($type === 'ride_book') {
+            $book = RideBook::where('driver_id', $driver->id)->find($id);
+            if (!$book) {
+                return response()->json(['status' => false, 'message' => 'الطلب غير موجود'], 404);
             }
+            if (in_array($action, ['going_to_pickup', 'picked_up', ''], true)) {
+                if (in_array((string) $book->status, ['pending', 'accepted'], true)) {
+                    try {
+                        $book->update(['status' => 'in_progress']);
+                    } catch (\Throwable $e) {
+                    }
+                }
+                $customer = User::find($book->user_id);
+                if ($customer && $action !== '') {
+                    app(FcmService::class)->sendToUser(
+                        $customer,
+                        $action === 'picked_up' ? 'تم استلام الطلب' : 'السائق في الطريق',
+                        $action === 'picked_up' ? 'تم استلام الطلب وجارٍ التوصيل.' : 'السائق في الطريق إليك.',
+                        'trip_status',
+                        (string) $book->id,
+                    );
+                }
+
+                return app(OrderTrackingController::class)->show('ride_book', $id);
+            }
+
+            return response()->json(['status' => false, 'message' => 'إجراء غير معروف'], 422);
         }
 
         if ($type === 'trip_request') {
@@ -584,9 +604,35 @@ class DriverPanelController extends Controller
         return response()->json(['status' => false, 'message' => 'نوع الطلب غير مدعوم'], 404);
     }
 
+    /** يصحح نوع الطلب لو التطبيق أرسل نوعاً لا يطابق الرقم (bidding_trip / trip_request / ride_book). */
+    private function correctDriverType(string $type, int $id, User $driver): string
+    {
+        $mine = fn ($q) => $q->where('driver_id', $driver->id);
+        $inBidding = function () use ($id, $driver) {
+            $q = BiddingTrip::query();
+            $col = BiddingTrip::assignedDriverColumn();
+            $col ? $q->where($col, $driver->id) : $q->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id));
+            return $q->whereKey($id)->exists();
+        };
+        $inTrip = fn () => TripRequest::whereKey($id)->whereHas('acceptedOffer', fn ($x) => $x->where('driver_id', $driver->id))->exists();
+        $inRide = fn () => RideBook::whereKey($id)->where('driver_id', $driver->id)->exists();
+        $checks = ['bidding_trip' => $inBidding, 'trip_request' => $inTrip, 'ride_book' => $inRide];
+        if (isset($checks[$type]) && $checks[$type]()) {
+            return $type;
+        }
+        foreach ($checks as $alt => $fn) {
+            if ($alt !== $type && $fn()) {
+                return $alt;
+            }
+        }
+
+        return $type;
+    }
+
     public function completeOrder(Request $request, string $type, int $id)
     {
         $driver = $this->requireDriver();
+        $type = $this->correctDriverType(strtolower(trim($type)), $id, $driver);
         $amount = 0;
 
         if ($type === 'ride_book') {
@@ -598,7 +644,7 @@ class DriverPanelController extends Controller
             $amount = (float) $booking->amount;
         } elseif ($type === 'trip_request') {
             $trip = TripRequest::with('user')
-                ->whereIn('status', ['handed_to_driver', 'in_progress'])
+                ->whereIn('status', ['handed_to_driver', 'in_progress', 'accepted', 'going_to_pickup', 'picked_up', 'driver_assigned'])
                 ->whereHas('acceptedOffer', fn ($q) => $q->where('driver_id', $driver->id))
                 ->findOrFail($id);
             $trip->update(['status' => 'completed']);
@@ -617,7 +663,7 @@ class DriverPanelController extends Controller
             }
         } elseif ($type === 'bidding_trip') {
             $trip = BiddingTrip::with('user')
-                ->whereIn('status', ['handed_to_driver', 'in_progress', 'accepted']);
+                ->whereIn('status', ['handed_to_driver', 'in_progress', 'accepted', 'going_to_pickup', 'picked_up', 'driver_assigned']);
             $driverCol = BiddingTrip::assignedDriverColumn();
             if ($driverCol) {
                 $trip->where($driverCol, $driver->id);

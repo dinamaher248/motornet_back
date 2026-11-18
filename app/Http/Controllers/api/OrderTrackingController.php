@@ -134,7 +134,7 @@ class OrderTrackingController extends Controller
         if ($first->getStatusCode() !== 404) {
             return $first;
         }
-        foreach (['trip_request', 'bidding_trip', 'service_order'] as $alt) {
+        foreach (['trip_request', 'bidding_trip', 'ride_book', 'service_order'] as $alt) {
             if ($alt === $type) {
                 continue;
             }
@@ -149,6 +149,39 @@ class OrderTrackingController extends Controller
 
     private function resolveExact(string $type, int $id, User $user)
     {
+        if ($type === 'ride_book') {
+            $book = RideBook::find($id);
+            if (!$book) {
+                return response()->json(['status' => false, 'message' => 'الطلب غير موجود'], 404);
+            }
+            $isCustomer = (int) $book->user_id === (int) $user->id;
+            $isDriver = (int) $book->driver_id === (int) $user->id;
+            if (!$isCustomer && !$isDriver) {
+                return response()->json(['status' => false, 'message' => 'غير مسموح'], 403);
+            }
+            $driver = $book->driver_id ? User::find($book->driver_id) : null;
+
+            return [
+                'type' => 'ride_book',
+                'model' => $book,
+                'status' => $this->normalizeStatus($book->status),
+                'is_customer_side' => $isCustomer,
+                'is_driver' => $isDriver,
+                'driver' => $driver,
+                'customer' => User::find($book->user_id),
+                'price' => (float) $book->amount,
+                'pickup' => $book->pick_loc,
+                'dropoff' => $book->target_loc,
+                'pickup_lat' => null,
+                'pickup_lng' => null,
+                'dropoff_lat' => null,
+                'dropoff_lng' => null,
+                'ride_book_id' => $book->id,
+                'driver_id' => $driver?->id,
+                'partner_user_id' => $isCustomer ? $driver?->id : $book->user_id,
+            ];
+        }
+
         if ($type === 'trip_request') {
             $trip = TripRequest::with(['user', 'acceptedOffer.driver'])->find($id);
             if (!$trip) {
