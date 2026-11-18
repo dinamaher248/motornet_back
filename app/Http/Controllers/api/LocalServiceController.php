@@ -59,7 +59,7 @@ class LocalServiceController extends Controller
             ->where('is_active', true)
             ->orderBy('id')
             ->get()
-            ->map(function (Merchant $m) use ($lat, $lng) {
+            ->map(function (Merchant $m) use ($lat, $lng, $category) {
                 $distanceM = $this->distanceMeters($lat, $lng, $m->lat, $m->lng);
 
                 return [
