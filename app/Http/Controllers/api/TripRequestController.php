@@ -194,6 +194,10 @@ class TripRequestController extends Controller
             return response()->json(['status_code' => 403, 'message' => 'للسائقين فقط'], 403);
         }
 
+        if (\App\Services\ActiveTripGuard::driverBusy((int) $driver->id)) {
+            return \App\Services\ActiveTripGuard::deny(\App\Services\ActiveTripGuard::DRIVER_MSG);
+        }
+
         $data = $request->validate([
             'amount' => 'required|numeric|min:1',
         ]);
@@ -244,6 +248,10 @@ class TripRequestController extends Controller
 
         if ((int) $trip->user_id !== (int) $user->id) {
             return response()->json(['status_code' => 403, 'message' => 'غير مسموح'], 403);
+        }
+
+        if (\App\Services\ActiveTripGuard::customerBusy((int) $user->id, null, (int) $trip->id)) {
+            return \App\Services\ActiveTripGuard::deny(\App\Services\ActiveTripGuard::CUSTOMER_MSG);
         }
 
         if ($trip->status !== 'awaiting_offers') {

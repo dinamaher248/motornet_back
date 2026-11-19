@@ -211,6 +211,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/driver/wallet/settle', [DriverPanelController::class, 'settleWallet']);
     Route::post('/driver/wallet/billing-mode', [DriverPanelController::class, 'updateBillingMode']);
     
+    Route::get('/ratings/pending', [\App\Http\Controllers\api\RatingController::class, 'pending']);
     Route::post('/ratings', [\App\Http\Controllers\api\RatingController::class, 'store']);
 
     Route::get('/order-tracking/{type}/{id}', [OrderTrackingController::class, 'show']);

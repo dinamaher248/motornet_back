@@ -304,6 +304,10 @@ class DriverPanelController extends Controller
     {
         $driver = $this->requireDriver();
 
+        if (\App\Services\ActiveTripGuard::driverBusy((int) $driver->id)) {
+            return \App\Services\ActiveTripGuard::deny(\App\Services\ActiveTripGuard::DRIVER_MSG);
+        }
+
         $order = ServiceOrder::with(['merchant', 'user'])
             ->where('id', $id)
             ->where('status', 'driver_invited')
@@ -651,6 +655,7 @@ class DriverPanelController extends Controller
                     (string) $trip->id,
                 );
             }
+            $this->ensureDeliveredInbox($trip->user_id, 'trip_completed', (string) $trip->id);
         } elseif ($type === 'bidding_trip') {
             $trip = BiddingTrip::with('user')
                 ->assignedTo($driver->id)
@@ -673,6 +678,7 @@ class DriverPanelController extends Controller
                     (string) $trip->id,
                 );
             }
+            $this->ensureDeliveredInbox($trip->user_id, 'bidding_completed', (string) $trip->id);
         } elseif ($type === 'service_order') {
             $order = ServiceOrder::where('driver_id', $driver->id)->findOrFail($id);
             if ($order->status === 'completed') {
@@ -700,6 +706,7 @@ class DriverPanelController extends Controller
                     (string) $order->id,
                 );
             }
+            $this->ensureDeliveredInbox($order->user_id, 'service_order_status', (string) $order->id);
             app(MerchantOrderNotificationService::class)->notifyOrderStatus(
                 $order,
                 'تم تسليم الطلب',
@@ -1073,6 +1080,30 @@ class DriverPanelController extends Controller
         }
 
         return $this->submitSettlement($request);
+    }
+
+    /** يضمن وجود إشعار «تم التسليم» في صندوق العميل حتى لو تعذّر الإرسال عبر FCM. */
+    private function ensureDeliveredInbox($userId, string $action, string $refId): void
+    {
+        try {
+            if (!$userId || !Schema::hasTable('app_notifications')) {
+                return;
+            }
+            $exists = \App\Models\AppNotification::where('user_id', $userId)
+                ->where('action', $action)->where('ref_id', $refId)
+                ->where('created_at', '>=', now()->subMinutes(2))->exists();
+            if (!$exists && ($u = User::find($userId))) {
+                \App\Models\AppNotification::record(
+                    $u,
+                    'تم تسليم الطلب',
+                    'تم تسليم طلبك بنجاح. يمكنك الآن تقييم السائق',
+                    $action,
+                    $refId
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function requireDriver(): User

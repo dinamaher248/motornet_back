@@ -169,6 +169,10 @@ class ApiBiddingController extends Controller
             ], 403);
         }
 
+        if (\App\Services\ActiveTripGuard::driverBusy((int) $driver->id)) {
+            return \App\Services\ActiveTripGuard::deny(\App\Services\ActiveTripGuard::DRIVER_MSG);
+        }
+
         $data = $request->validate([
             'proposed_price' => 'required_without:amount|numeric|min:1',
             'amount' => 'required_without:proposed_price|numeric|min:1',
@@ -284,6 +288,10 @@ class ApiBiddingController extends Controller
                 'status_code' => 403,
                 'message' => 'غير مسموح',
             ], 403);
+        }
+
+        if (\App\Services\ActiveTripGuard::customerBusy((int) $user->id, (int) $trip->id)) {
+            return \App\Services\ActiveTripGuard::deny(\App\Services\ActiveTripGuard::CUSTOMER_MSG);
         }
 
         if ($trip->status !== 'pending') {
