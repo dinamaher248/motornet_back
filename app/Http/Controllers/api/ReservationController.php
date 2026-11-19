@@ -140,8 +140,12 @@ class ReservationController extends Controller
             throw $e;
         }
 
+        $owner = $merchant->owner ?: ($merchant->owner_user_id ? User::find($merchant->owner_user_id) : null);
+        if (!$owner) {
+            \Log::warning('reservation: merchant has no owner user', ['merchant_id' => $merchant->id, 'booking_id' => $booking->id]);
+        }
         $this->notify(
-            $merchant->owner,
+            $owner,
             'طلب حجز جديد',
             'عميل يطلب معرفة السعر والتفاصيل — طلب #' . $booking->id,
             'new_reservation_booking',

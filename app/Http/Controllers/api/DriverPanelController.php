@@ -665,6 +665,7 @@ class DriverPanelController extends Controller
                 return response()->json(['status_code' => 404, 'message' => 'الطلب غير موجود أو تم إنهاؤه'], 404);
             }
             $trip->update(['status' => 'completed']);
+            \App\Services\LinkedOrderSync::onCompleted($trip);
             if (!empty($trip->ride_book_id)) {
                 RideBook::where('id', $trip->ride_book_id)->update(['status' => 'completed']);
             }

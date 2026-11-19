@@ -18,6 +18,7 @@ class ActiveTripGuard
     {
         try {
             if (BiddingTrip::where('user_id', $userId)->whereIn('status', self::ACTIVE)
+                ->where(fn ($q) => $q->whereNull('notes')->orWhere(fn ($w) => $w->where('notes', 'not like', 'service_order:%')->where('notes', 'not like', 'custom_order:%')))
                 ->when($exceptBiddingId, fn ($q) => $q->where('id', '!=', $exceptBiddingId))->exists()) {
                 return true;
             }

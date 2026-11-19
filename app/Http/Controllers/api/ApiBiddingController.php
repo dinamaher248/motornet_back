@@ -351,6 +351,7 @@ class ApiBiddingController extends Controller
         });
 
         $trip = $trip->fresh(['acceptedOffer.driver', 'driver']);
+        \App\Services\LinkedOrderSync::onAccepted($trip, (int) $offer->driver_id);
 
         if ($offer->driver) {
             try {

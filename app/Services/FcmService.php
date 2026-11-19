@@ -353,7 +353,23 @@ class FcmService
 
                     'notification' => [
 
-                        'channel_id' => 'fcm_data_channel',
+                        'channel_id' => 'fcm_sound_channel_v2',
+
+                        'sound' => 'default',
+
+                    ],
+
+                ],
+
+                'apns' => [
+
+                    'payload' => [
+
+                        'aps' => [
+
+                            'sound' => 'default',
+
+                        ],
 
                     ],
 
