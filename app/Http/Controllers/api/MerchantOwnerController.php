@@ -500,17 +500,16 @@ class MerchantOwnerController extends Controller
             ? round((float) $data['merchant_offer_price'], 2)
             : null;
 
-        if (($price === null || $price <= 0) && empty(trim($data['merchant_offer_notes'] ?? ''))) {
-            return response()->json([
-                'status_code' => 422,
-                'message' => 'أدخل السعر أو اكتب ملاحظة توضح عدم التوفر',
-            ], 422);
+        $unavailable = $price === null || $price <= 0;
+        $notes = trim((string) ($data['merchant_offer_notes'] ?? ''));
+        if ($unavailable && $notes === '') {
+            $notes = 'غير متوفر حالياً';
         }
 
         $order->update([
-            'merchant_offer_price' => $price > 0 ? $price : null,
-            'merchant_offer_notes' => $data['merchant_offer_notes'] ?? null,
-            'status' => 'offer_sent',
+            'merchant_offer_price' => $unavailable ? null : $price,
+            'merchant_offer_notes' => $notes !== '' ? $notes : null,
+            'status' => $unavailable ? 'offer_unavailable' : 'offer_sent',
         ]);
 
         $order = $order->fresh(['user', 'merchant']);
@@ -865,6 +864,7 @@ class MerchantOwnerController extends Controller
             'awaiting_merchant_offer' => 'بانتظار إرسال عرض',
             'offer_sent' => 'عرض مرسل — بانتظار العميل',
             'offer_rejected' => 'رفض العميل العرض',
+            'offer_unavailable' => 'غير متوفر — تم إبلاغ العميل',
             'offer_accepted' => 'قبل العميل — بانتظار تعيين سائق',
             'merchant_rejected' => 'مرفوض',
             'preparing' => 'جاري التجهيز',

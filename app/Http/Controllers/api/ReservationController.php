@@ -307,12 +307,35 @@ class ReservationController extends Controller
         $booking = ReservationBooking::with(['user', 'answers'])->where('merchant_id', $merchant->id)->findOrFail($id);
 
         $data = $request->validate([
-            'quoted_price' => 'required|numeric|min:0.01|max:99999999',
+            'quoted_price' => 'nullable|numeric|min:0|max:99999999',
             'quote_details' => 'nullable|string|max:2000',
         ]);
 
         if ($booking->status !== ReservationBooking::STATUS_PENDING_QUOTE) {
             return $this->invalidState();
+        }
+
+        // سعر فاضي أو صفر = غير متوفر (حالة منتهية بدون أزرار عند العميل)
+        if (empty($data['quoted_price']) || (float) $data['quoted_price'] <= 0) {
+            $details = trim((string) ($data['quote_details'] ?? ''));
+            $booking->update([
+                'status' => ReservationBooking::STATUS_UNAVAILABLE,
+                'quote_details' => $details !== '' ? $details : null,
+                'responded_at' => now(),
+            ]);
+            $this->notify(
+                $booking->user,
+                'غير متوفر حالياً',
+                ($merchant->name ?: 'النشاط') . ' غير متوفر حالياً لطلبك #' . $booking->id . ($details !== '' ? ' — ' . $details : ''),
+                'reservation_unavailable',
+                $booking->id,
+            );
+
+            return response()->json([
+                'status_code' => 200,
+                'message' => 'تم إبلاغ العميل بعدم التوفر',
+                'data' => $this->format($booking->fresh(['user', 'answers']), true),
+            ]);
         }
 
         $booking->update([

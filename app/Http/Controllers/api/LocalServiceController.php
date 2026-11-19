@@ -681,6 +681,7 @@ class LocalServiceController extends Controller
             'awaiting_merchant_offer' => 'بانتظار عرض المتجر',
             'offer_sent' => 'عرض بانتظار ردك',
             'offer_rejected' => 'تم رفض العرض',
+            'offer_unavailable' => 'غير متوفر حالياً',
             'offer_accepted' => 'تم قبول العرض — جاري التجهيز',
             'merchant_rejected' => 'مرفوض من المتجر',
             'preparing' => 'جاري التجهيز',

@@ -28,7 +28,7 @@ class MerchantOrderNotificationService
         $price = $order->merchant_offer_price;
         $body = $price !== null
             ? 'عرض بقيمة ' . $price . ' ج.م من ' . ($order->merchant?->name ?? 'المتجر')
-            : 'رد من ' . ($order->merchant?->name ?? 'المتجر') . ' على طلبك المخصص';
+            : 'غير متوفر حالياً — ' . ($order->merchant?->name ?? 'المتجر') . ($order->merchant_offer_notes ? ': ' . $order->merchant_offer_notes : '');
 
         app(FcmService::class)->sendToUser(
             $customer,
