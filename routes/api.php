@@ -188,6 +188,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/reservations/bookings/{id}', [ReservationController::class, 'showMine']);
     Route::post('/reservations/bookings/{id}/accept', [ReservationController::class, 'acceptQuote']);
     Route::post('/reservations/bookings/{id}/reject', [ReservationController::class, 'rejectQuote']);
+    Route::post('/reservations/bookings/{id}/cancel', [ReservationController::class, 'cancelByCustomer']);
+    Route::post('/merchant/reservations/{id}/cancel', [ReservationController::class, 'cancelByOwner']);
 
     Route::get('/merchant/reservations', [ReservationController::class, 'ownerIndex']);
     Route::get('/merchant/reservations/{id}', [ReservationController::class, 'ownerShow']);

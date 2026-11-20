@@ -216,6 +216,38 @@ class ReservationController extends Controller
         ]);
     }
 
+    /** إلغاء الحجز بواسطة العميل (في أي وقت قبل أن يُلغى/يُرفض). */
+    public function cancelByCustomer(int $id): JsonResponse
+    {
+        $user = Auth::guard('api')->user();
+        $booking = ReservationBooking::with(['merchant.owner', 'answers'])->where('user_id', $user->id)->findOrFail($id);
+
+        if (!in_array($booking->status, [ReservationBooking::STATUS_PENDING_QUOTE, ReservationBooking::STATUS_QUOTED, ReservationBooking::STATUS_CONFIRMED], true)) {
+            return $this->invalidState();
+        }
+
+        $booking->update(['status' => ReservationBooking::STATUS_CANCELLED, 'commission_eligible' => false, 'responded_at' => now()]);
+        $this->notify($booking->merchant?->owner, 'تم إلغاء الحجز', 'قام العميل بإلغاء الحجز #' . $booking->id, 'reservation_cancelled', $booking->id);
+
+        return response()->json(['status_code' => 200, 'message' => 'تم إلغاء الحجز', 'data' => $this->format($booking->fresh(['merchant', 'answers']))]);
+    }
+
+    /** إلغاء الحجز بواسطة صاحب النشاط (بعد إرسال السعر أو بعد التأكيد). */
+    public function cancelByOwner(int $id): JsonResponse
+    {
+        $merchant = $this->ownedMerchant();
+        $booking = ReservationBooking::with(['user', 'answers'])->where('merchant_id', $merchant->id)->findOrFail($id);
+
+        if (!in_array($booking->status, [ReservationBooking::STATUS_QUOTED, ReservationBooking::STATUS_CONFIRMED], true)) {
+            return $this->invalidState();
+        }
+
+        $booking->update(['status' => ReservationBooking::STATUS_CANCELLED, 'commission_eligible' => false, 'responded_at' => now()]);
+        $this->notify($booking->user, 'تم إلغاء الحجز', ($merchant->name ?: 'النشاط') . ' ألغى الحجز #' . $booking->id, 'reservation_cancelled', $booking->id);
+
+        return response()->json(['status_code' => 200, 'message' => 'تم إلغاء الحجز', 'data' => $this->format($booking->fresh(['user', 'answers']), true)]);
+    }
+
     public function rejectQuote(int $id): JsonResponse
     {
         $user = Auth::guard('api')->user();

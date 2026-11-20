@@ -225,15 +225,6 @@ public function getHistory(Request $request)
         ->orderBy('created_at', 'desc')
         ->get();
 
-    // إحصائيات للهستوري المعروض (بعد تطبيق الفلاتر)
-    $stats = [
-        'total_count'    => $historyCollection->count(),
-        'accepted_count' => $historyCollection->where('status', 'accepted')->count(),
-        'refused_count'  => $historyCollection->where('status', 'refused')->count(),
-        'pending_count'  => $historyCollection->where('status', 'pending')->count(),
-        'completed_count'=> $historyCollection->where('status', 'completed')->count(),
-    ];
-
     // فورمات موحّد للريسبونس
     $history = $historyCollection->map(function (RideBook $order) use ($user) {
         $other = $user->title === 'driver'
@@ -242,6 +233,7 @@ public function getHistory(Request $request)
 
         return [
             'id'         => $order->id,
+            'type'       => 'ride_book',
             'amount'     => $order->amount,
             'seat_count' => $order->seat_count,
             'msg'        => $order->msg,
@@ -249,6 +241,7 @@ public function getHistory(Request $request)
             'target_loc' => $order->target_loc,
             'status'     => $order->status,
             'created_at' => optional($order->created_at)->format('Y-m-d H:i'),
+            '_ts'        => optional($order->created_at)->getTimestamp() ?? 0,
 
             'other_party' => [
                 'id'           => $other->id           ?? null,
@@ -260,7 +253,29 @@ public function getHistory(Request $request)
                 'area'         => $other->area         ?? null,
             ],
         ];
-    })->values();
+    })->values()->all();
+
+    // العميل: سجل موحّد (رحلات + حجوزات + طلبات متاجر/مخصصة)
+    if ($user->title !== 'driver') {
+        $extra = \App\Services\UnifiedHistory::forCustomer($user, $fromDate, $toDate);
+        if ($statusFilter !== 'all') {
+            $extra = array_values(array_filter($extra, fn ($i) => $i['status'] === $statusFilter));
+        }
+        $history = array_merge($history, $extra);
+        usort($history, fn ($a, $b) => ($b['_ts'] ?? 0) <=> ($a['_ts'] ?? 0));
+    }
+
+    $history = array_map(function ($i) { unset($i['_ts']); return $i; }, $history);
+
+    // إحصائيات للهستوري المعروض (بعد تطبيق الفلاتر)
+    $col = collect($history);
+    $stats = [
+        'total_count'    => $col->count(),
+        'accepted_count' => $col->where('status', 'accepted')->count(),
+        'refused_count'  => $col->where('status', 'refused')->count(),
+        'pending_count'  => $col->where('status', 'pending')->count(),
+        'completed_count'=> $col->where('status', 'completed')->count(),
+    ];
 
     return response()->json([
         'status_code' => 200,
@@ -272,7 +287,7 @@ public function getHistory(Request $request)
             'to_date'   => $toDate,
         ],
         'stats'       => $stats,
-        'history'     => $history,
+        'history'     => array_values($history),
     ], 200);
 }
 

@@ -13,6 +13,7 @@ class ReservationBooking extends Model
     public const STATUS_QUOTED = 'quoted';
     public const STATUS_REJECTED = 'rejected';
     public const STATUS_CONFIRMED = 'confirmed';
+    public const STATUS_CANCELLED = 'cancelled';
 
     public const STATUSES = [
         self::STATUS_PENDING_QUOTE,
@@ -20,6 +21,7 @@ class ReservationBooking extends Model
         self::STATUS_QUOTED,
         self::STATUS_REJECTED,
         self::STATUS_CONFIRMED,
+        self::STATUS_CANCELLED,
     ];
 
     public const STATUS_LABELS = [
@@ -28,6 +30,7 @@ class ReservationBooking extends Model
         self::STATUS_QUOTED => 'تم إرسال السعر',
         self::STATUS_REJECTED => 'تم رفض العرض',
         self::STATUS_CONFIRMED => 'مؤكد',
+        self::STATUS_CANCELLED => 'ملغي',
     ];
 
     protected $fillable = [
