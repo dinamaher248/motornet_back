@@ -130,6 +130,7 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('/merchant/products/{productId}', [MerchantOwnerController::class, 'deleteProduct']);
     Route::get('/merchant/orders', [MerchantOwnerController::class, 'orders']);
     Route::post('/merchant/orders/{orderId}/ready', [MerchantOwnerController::class, 'markReady']);
+    Route::post('/merchant/orders/{orderId}/deliver', [MerchantOwnerController::class, 'markDelivered']);
     Route::post('/merchant/orders/{orderId}/status', [VendorController::class, 'orderStatus']);
     Route::get('/merchant/orders/{orderId}', [MerchantOwnerController::class, 'showOrder']);
     Route::post('/merchant/orders/{orderId}/accept', [MerchantOwnerController::class, 'acceptOrder']);

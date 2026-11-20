@@ -690,11 +690,100 @@ class MerchantOwnerController extends Controller
             && $this->isReady($o)
             && empty($o->driver_id)
             && empty($o->invited_driver_id)
+            && !$this->hasActiveDispatch($o)
             && in_array($o->status, ['preparing', 'accepted', 'awaiting_driver'], true);
     }
     private function isReady(ServiceOrder $o): bool { return $o->status==="ready" || !empty($o->ready_at); }
     private function canMarkReady(ServiceOrder $o): bool { return !$this->isReady($o) && in_array($o->status, ["offer_accepted","driver_invited","awaiting_driver","driver_assigned","preparing","accepted"], true); }
-    public function markReady(int $orderId) { $m=$this->ownedMerchant(); $o=$this->findOwnedOrder($m,$orderId); if($this->isReady($o))return response()->json(["status_code"=>200,"message"=>"الطلب جاهز بالفعل","data"=>$this->formatOrder($o->load(["driver","invitedDriver"]))]); if(!$this->canMarkReady($o))return response()->json(["status_code"=>422,"message"=>"لا يمكن تعليم الطلب جاهزاً الآن"],422); $o->update(["ready_at"=>now()]); $o=$o->fresh(["user","merchant","driver","invitedDriver"]); $fcm=app(FcmService::class); $pickup=$o->fulfillment_type==="pickup"; foreach(array_filter([$o->user,$o->driver??$o->invitedDriver]) as $t){ try{$fcm->sendToUser($t,$pickup&&$t->id===$o->user_id?"طلبك جاهز للاستلام":"طلبك جاهز",$pickup&&$t->id===$o->user_id?"تم تجهيز طلبك رقم #".$o->id." — يمكنك استلامه من ".($o->merchant?->name??"المكان")." أو الاتصال بهم":"طلبك رقم #".$o->id." جاهز الآن","service_order_ready",(string)$o->id);}catch(\Throwable $e){} } return response()->json(["status_code"=>200,"message"=>"تم تعليم الطلب جاهزاً وإبلاغ العميل","data"=>$this->formatOrder($o)]); }
+    public function markReady(int $orderId)
+    {
+        $m = $this->ownedMerchant();
+        $o = $this->findOwnedOrder($m, $orderId);
+        if ($this->isReady($o)) {
+            return response()->json(['status_code' => 200, 'message' => 'الطلب جاهز بالفعل', 'data' => $this->formatOrder($o->load(['driver', 'invitedDriver']))]);
+        }
+        if (!$this->canMarkReady($o)) {
+            return response()->json(['status_code' => 422, 'message' => 'لا يمكن تعليم الطلب جاهزاً الآن'], 422);
+        }
+        $o->update(['ready_at' => now()]);
+        $o = $o->fresh(['user', 'merchant', 'driver', 'invitedDriver']);
+        $fcm = app(FcmService::class);
+        $name = $o->merchant?->name ?? 'المكان';
+        $phone = trim((string) ($o->merchant?->phone ?? ''));
+        $callTxt = $phone !== '' ? ' — للاتصال: ' . $phone : '';
+
+        if ($o->user) {
+            if ($o->fulfillment_type === 'pickup') {
+                $title = 'طلبك جاهز للاستلام';
+                $body = 'تم تجهيز طلبك رقم #' . $o->id . ' — يمكنك استلامه من ' . $name . $callTxt;
+            } elseif ($o->fulfillment_type === 'merchant_delivery') {
+                $title = 'طلبك جاهز';
+                $body = 'طلبك جاهز ومطلوب تسليمه بواسطة المكان' . $callTxt;
+            } else {
+                $title = 'طلبك جاهز';
+                $body = 'طلبك رقم #' . $o->id . ' جاهز الآن' . $callTxt;
+            }
+            try {
+                $fcm->sendToUser($o->user, $title, $body, 'service_order_ready', (string) $o->id);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+        $drv = $o->driver ?? $o->invitedDriver;
+        if ($drv) {
+            try {
+                $fcm->sendToUser($drv, 'الطلب جاهز', 'طلب #' . $o->id . ' جاهز للاستلام من ' . $name, 'service_order_ready', (string) $o->id);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json(['status_code' => 200, 'message' => 'تم تعليم الطلب جاهزاً وإبلاغ العميل', 'data' => $this->formatOrder($o)]);
+    }
+
+    /** «تم التسليم» من التاجر: للاستلام من المتجر، أو كبديل احتياطي للتوصيل. */
+    public function markDelivered(int $orderId)
+    {
+        $m = $this->ownedMerchant();
+        $o = $this->findOwnedOrder($m, $orderId);
+        if ($o->status === 'completed') {
+            return response()->json(['status_code' => 200, 'message' => 'الطلب مكتمل بالفعل', 'data' => $this->formatOrder($o)]);
+        }
+        if (!$this->canDeliver($o)) {
+            return response()->json(['status_code' => 422, 'message' => 'لا يمكن إنهاء الطلب في حالته الحالية'], 422);
+        }
+        $o->update(['status' => 'completed']);
+        $o = $o->fresh(['user', 'merchant', 'driver', 'invitedDriver']);
+        if ($o->user) {
+            try {
+                app(FcmService::class)->sendToUser($o->user, 'تم تسليم الطلب', 'تم تسليم طلبك رقم #' . $o->id . ' بنجاح. يمكنك الآن تقييم المكان', 'service_order_status', (string) $o->id);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json(['status_code' => 200, 'message' => 'تم تسليم الطلب', 'data' => $this->formatOrder($o)]);
+    }
+
+    private function canDeliver(ServiceOrder $o): bool
+    {
+        if (in_array($o->status, ['completed', 'cancelled', 'rejected', 'offer_rejected', 'offer_unavailable', 'pending', 'offer_sent'], true)) {
+            return false;
+        }
+
+        return $o->fulfillment_type === 'pickup' || $o->fulfillment_type === 'merchant_delivery' || $this->isReady($o);
+    }
+
+    /** هل أُرسل الطلب لسائقين عبر شاشة المواصلات (رحلة نشطة مرتبطة)؟ */
+    private function hasActiveDispatch(ServiceOrder $o): bool
+    {
+        try {
+            return \App\Models\BiddingTrip::whereIn('notes', ['service_order:' . $o->id, 'custom_order:' . $o->id])
+                ->whereNotIn('status', ['cancelled', 'canceled', 'rejected', 'expired'])->exists();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
     private function findOwnedOrder(Merchant $merchant, int $orderId): ServiceOrder
     {
         return ServiceOrder::with(['user', 'merchant'])
@@ -830,6 +919,8 @@ class MerchantOwnerController extends Controller
             'can_reject_payment' => !$isCustom && $isCatalogPending && $isWallet && $order->status === 'awaiting_payment_review',
             'can_send_offer' => $isCustom && $order->status === 'awaiting_merchant_offer',
             'can_assign_driver' => $this->canAssignNow($order),
+            'can_deliver' => $this->canDeliver($order),
+            'dispatched' => $this->hasActiveDispatch($order),
             'is_ready' => $this->isReady($order),
             'can_mark_ready' => $this->canMarkReady($order),
             'invited_driver' => $order->invitedDriver ? [

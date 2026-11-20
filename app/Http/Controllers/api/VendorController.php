@@ -34,10 +34,16 @@ class VendorController extends Controller {
         $f->setAccessible(true);
         return response()->json(['status_code'=>200, 'message'=>'تم تحديث حالة المنتج', 'data'=>$f->invoke($o, $product->fresh())]);
     }
-    public function orderStatus(Request $r, int $id) { return $this->updateOrderStatus($r, $id); }
+    public function orderStatus(Request $r, int $id) {
+        $o = app(MerchantOwnerController::class);
+        $st = (string) $r->input('status');
+        if (in_array($st, ['completed', 'delivered'], true)) { return $o->markDelivered($id); }
+        if ($st === 'ready') { return $o->markReady($id); }
+        if ($st === 'rejected' || $st === 'cancelled') { return $o->rejectOrder($id); }
+        return $o->acceptOrder($id);
+    }
     public function orders(Request $r) { return app(MerchantOwnerController::class)->orders($r); }
     public function showOrder(int $id) { return app(MerchantOwnerController::class)->showOrder($id); }
-    public function updateOrderStatus(Request $r, int $id) { return app(MerchantOwnerController::class)->updateOrderStatus($r, $id); }
     public function sendOffer(Request $r, int $id) { return app(MerchantOwnerController::class)->sendOffer($r, $id); }
     public function assignDriver(Request $r, int $id) { return app(MerchantOwnerController::class)->assignDriver($r, $id); }
     public function availableDrivers(int $id) { return app(MerchantOwnerController::class)->availableDriversForOrder($id); }
