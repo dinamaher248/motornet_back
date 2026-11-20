@@ -148,6 +148,12 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/vendor/products', [VendorController::class, 'products']);
     Route::post('/vendor/products', [VendorController::class, 'storeProduct']);
     Route::post('/vendor/products/{id}/toggle', [VendorController::class, 'toggleProduct']);
+    Route::post('/vendor/products/{id}', [VendorController::class, 'updateProduct']);
+    Route::put('/vendor/products/{id}', [VendorController::class, 'updateProduct']);
+    Route::delete('/vendor/products/{id}', [VendorController::class, 'deleteProduct']);
+    Route::post('/vendor/products/{id}/delete', [VendorController::class, 'deleteProduct']);
+    Route::post('/merchant/products/{productId}/delete', [MerchantOwnerController::class, 'deleteProduct']);
+    Route::post('/merchant/products/{id}/toggle', [VendorController::class, 'toggleProduct']);
     Route::get('/vendor/orders', [VendorController::class, 'orders']);
     Route::post('/vendor/orders/{id}/status', [VendorController::class, 'orderStatus']);
     Route::post('/vendor/orders/{id}/handle', [VendorController::class, 'handleOrder']);

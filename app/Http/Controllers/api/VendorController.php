@@ -23,6 +23,18 @@ class VendorController extends Controller {
     public function storeProduct(Request $r) { return app(MerchantOwnerController::class)->storeProduct($r); }
     public function updateProduct(Request $r, int $id) { return app(MerchantOwnerController::class)->updateProduct($r, $id); }
     public function deleteProduct(int $id) { return app(MerchantOwnerController::class)->deleteProduct($id); }
+    public function toggleProduct(int $id) {
+        $o = app(MerchantOwnerController::class);
+        $m = (new \ReflectionMethod($o, 'ownedMerchant'));
+        $m->setAccessible(true);
+        $merchant = $m->invoke($o);
+        $product = $merchant->products()->findOrFail($id);
+        $product->update(['is_active' => !$product->is_active]);
+        $f = (new \ReflectionMethod($o, 'formatProduct'));
+        $f->setAccessible(true);
+        return response()->json(['status_code'=>200, 'message'=>'تم تحديث حالة المنتج', 'data'=>$f->invoke($o, $product->fresh())]);
+    }
+    public function orderStatus(Request $r, int $id) { return $this->updateOrderStatus($r, $id); }
     public function orders(Request $r) { return app(MerchantOwnerController::class)->orders($r); }
     public function showOrder(int $id) { return app(MerchantOwnerController::class)->showOrder($id); }
     public function updateOrderStatus(Request $r, int $id) { return app(MerchantOwnerController::class)->updateOrderStatus($r, $id); }
