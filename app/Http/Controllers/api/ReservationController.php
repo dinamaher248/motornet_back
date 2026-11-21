@@ -227,7 +227,7 @@ class ReservationController extends Controller
         }
 
         $booking->update(['status' => ReservationBooking::STATUS_CANCELLED, 'commission_eligible' => false, 'responded_at' => now()]);
-        $this->notify($booking->merchant?->owner, 'تم إلغاء الحجز', 'قام العميل بإلغاء الحجز #' . $booking->id, 'reservation_cancelled', $booking->id);
+        $this->notify($booking->merchant?->owner, 'تم إلغاء الحجز', 'قام العميل بإلغاء الحجز #' . $booking->id, 'reservation_customer_cancelled', $booking->id);
 
         return response()->json(['status_code' => 200, 'message' => 'تم إلغاء الحجز', 'data' => $this->format($booking->fresh(['merchant', 'answers']))]);
     }
